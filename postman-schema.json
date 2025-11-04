@@ -1,0 +1,445 @@
+{
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "id": "https://schema.getpostman.com/json/collection/v2.1.0/",
+    "type": "object",
+    "description": "Postman Collection Schema v2.1.0 - Reference schema for validating Postman collections",
+    "properties": {
+        "info": {
+            "$ref": "#/definitions/info"
+        },
+        "item": {
+            "type": "array",
+            "description": "Items are the basic unit for a Postman collection. You can think of them as corresponding to a single API endpoint. Each Item has one request and may have multiple API responses associated with it.",
+            "items": {
+                "title": "Items",
+                "oneOf": [
+                    {
+                        "$ref": "#/definitions/item"
+                    },
+                    {
+                        "$ref": "#/definitions/item-group"
+                    }
+                ]
+            }
+        },
+        "event": {
+            "$ref": "#/definitions/event-list"
+        },
+        "variable": {
+            "$ref": "#/definitions/variable-list"
+        },
+        "auth": {
+            "oneOf": [
+                {
+                    "type": "null"
+                },
+                {
+                    "$ref": "#/definitions/auth"
+                }
+            ]
+        },
+        "protocolProfileBehavior": {
+            "$ref": "#/definitions/protocol-profile-behavior"
+        }
+    },
+    "required": [
+        "info",
+        "item"
+    ],
+    "definitions": {
+        "info": {
+            "$schema": "http://json-schema.org/draft-04/schema#",
+            "id": "#/definitions/info",
+            "title": "Information",
+            "description": "Detailed description of the info block",
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "title": "Name of the collection",
+                    "description": "A collection's friendly name is defined by this field."
+                },
+                "_postman_id": {
+                    "type": "string",
+                    "description": "Every collection is identified by the unique value of this field."
+                },
+                "description": {
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "properties": {
+                                "content": {
+                                    "type": "string"
+                                },
+                                "type": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        {
+                            "type": "string"
+                        }
+                    ]
+                },
+                "version": {
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "properties": {
+                                "major": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                },
+                                "minor": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                },
+                                "patch": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                }
+                            },
+                            "required": ["major", "minor", "patch"]
+                        },
+                        {
+                            "type": "string"
+                        }
+                    ]
+                },
+                "schema": {
+                    "type": "string",
+                    "description": "This should ideally hold a link to the Postman schema that is used to validate this collection."
+                }
+            },
+            "required": [
+                "name",
+                "schema"
+            ]
+        },
+        "item": {
+            "$schema": "http://json-schema.org/draft-04/schema#",
+            "type": "object",
+            "title": "Item",
+            "id": "#/definitions/item",
+            "description": "Items are entities which contain an actual HTTP request, and sample responses attached to it.",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "description": "A unique ID that is used to identify collections internally"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "A human readable identifier for the current item."
+                },
+                "description": {
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "properties": {
+                                "content": {
+                                    "type": "string"
+                                },
+                                "type": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        {
+                            "type": "string"
+                        }
+                    ]
+                },
+                "request": {
+                    "type": "object",
+                    "properties": {
+                        "method": {
+                            "type": "string",
+                            "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
+                        },
+                        "header": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "key": {
+                                        "type": "string"
+                                    },
+                                    "value": {
+                                        "type": "string"
+                                    },
+                                    "disabled": {
+                                        "type": "boolean"
+                                    }
+                                }
+                            }
+                        },
+                        "url": {
+                            "oneOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "raw": {
+                                            "type": "string"
+                                        },
+                                        "protocol": {
+                                            "type": "string"
+                                        },
+                                        "host": {
+                                            "oneOf": [
+                                                {
+                                                    "type": "string"
+                                                },
+                                                {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                        "path": {
+                                            "oneOf": [
+                                                {
+                                                    "type": "string"
+                                                },
+                                                {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                        "query": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "key": {
+                                                        "type": "string"
+                                                    },
+                                                    "value": {
+                                                        "type": "string"
+                                                    },
+                                                    "disabled": {
+                                                        "type": "boolean"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        "body": {
+                            "oneOf": [
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "mode": {
+                                            "type": "string",
+                                            "enum": ["raw", "urlencoded", "formdata", "file", "graphql"]
+                                        },
+                                        "raw": {
+                                            "type": "string"
+                                        },
+                                        "urlencoded": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "key": {
+                                                        "type": "string"
+                                                    },
+                                                    "value": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ]
+                        }
+                    },
+                    "required": ["method"]
+                },
+                "response": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string"
+                            },
+                            "name": {
+                                "type": "string"
+                            },
+                            "status": {
+                                "type": "string"
+                            },
+                            "code": {
+                                "type": "integer"
+                            },
+                            "body": {
+                                "type": "string"
+                            },
+                            "header": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "required": [
+                "request"
+            ]
+        },
+        "item-group": {
+            "$schema": "http://json-schema.org/draft-04/schema#",
+            "title": "Folder",
+            "id": "#/definitions/item-group",
+            "description": "One of the primary goals of Postman is to organize the development of APIs. To this end, it is necessary to be able to group requests together. This can be achived using 'Folders'.",
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "A folder's friendly name is defined by this field."
+                },
+                "item": {
+                    "type": "array",
+                    "items": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/definitions/item"
+                            },
+                            {
+                                "$ref": "#/definitions/item-group"
+                            }
+                        ]
+                    }
+                }
+            },
+            "required": [
+                "item"
+            ]
+        },
+        "event-list": {
+            "$schema": "http://json-schema.org/draft-04/schema#",
+            "id": "#/definitions/event-list",
+            "title": "Event List",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "listen": {
+                        "type": "string",
+                        "enum": ["test", "prerequest"]
+                    },
+                    "script": {
+                        "type": "object",
+                        "properties": {
+                            "exec": {
+                                "oneOf": [
+                                    {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    {
+                                        "type": "string"
+                                    }
+                                ]
+                            },
+                            "type": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "variable-list": {
+            "$schema": "http://json-schema.org/draft-04/schema#",
+            "id": "#/definitions/variable-list",
+            "title": "Variable List",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string"
+                    },
+                    "value": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": ["string", "boolean", "any", "number"]
+                    }
+                }
+            }
+        },
+        "auth": {
+            "$schema": "http://json-schema.org/draft-04/schema#",
+            "type": "object",
+            "title": "Auth",
+            "id": "#/definitions/auth",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "apikey",
+                        "awsv4",
+                        "basic",
+                        "bearer",
+                        "digest",
+                        "edgegrid",
+                        "hawk",
+                        "noauth",
+                        "oauth1",
+                        "oauth2",
+                        "ntlm"
+                    ]
+                },
+                "bearer": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "key": {
+                                "type": "string"
+                            },
+                            "value": {
+                                "type": "string"
+                            },
+                            "type": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "required": [
+                "type"
+            ]
+        },
+        "protocol-profile-behavior": {
+            "$schema": "http://json-schema.org/draft-04/schema#",
+            "type": "object",
+            "title": "Protocol Profile Behavior",
+            "id": "#/definitions/protocol-profile-behavior",
+            "description": "Set of configurations used to alter the usual behavior of sending the request"
+        }
+    }
+}

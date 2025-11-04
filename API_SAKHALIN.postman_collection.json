@@ -1,0 +1,153 @@
+{
+  "info": {
+    "_postman_id": "bbcebac6-fcc7-480f-8e10-867ef3a8deb7",
+    "name": "API_SAKHALIN",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "4129147",
+    "_collection_link": "https://speeding-star-444433.postman.co/",
+    "description": "Postman коллекция для API Сахалинского перевозчика (rc.rfbus.ru:8086)"
+  },
+  "item": [
+    {
+      "name": "stations",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-access-token",
+            "value": "{{carrier_api_token}}",
+            "type": "text",
+            "description": "Токен доступа к API перевозчика"
+          }
+        ],
+        "url": {
+          "raw": "{{carrier_api_url}}/stations",
+          "host": [
+            "{{carrier_api_url}}"
+          ],
+          "path": [
+            "stations"
+          ]
+        },
+        "description": "Получить список всех станций"
+      },
+      "response": []
+    },
+    {
+      "name": "stations/from",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-access-token",
+            "value": "{{carrier_api_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{carrier_api_url}}/stations/from/50475",
+          "host": [
+            "{{carrier_api_url}}"
+          ],
+          "path": [
+            "stations",
+            "from",
+            "50475"
+          ]
+        },
+        "description": "Получить станции, доступные от конкретной станции"
+      },
+      "response": []
+    },
+    {
+      "name": "races",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-access-token",
+            "value": "{{carrier_api_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{carrier_api_url}}/races?from=62686&to=50475&date=7.11.24",
+          "host": [
+            "{{carrier_api_url}}"
+          ],
+          "path": [
+            "races"
+          ],
+          "query": [
+            {
+              "key": "from",
+              "value": "62686",
+              "description": "ID станции отправления"
+            },
+            {
+              "key": "to",
+              "value": "50475",
+              "description": "ID станции прибытия"
+            },
+            {
+              "key": "date",
+              "value": "7.11.24",
+              "description": "Дата в формате d.m.y"
+            }
+          ]
+        },
+        "description": "Получить список рейсов на определенную дату"
+      },
+      "response": []
+    },
+    {
+      "name": "race",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-access-token",
+            "value": "{{carrier_api_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{carrier_api_url}}/races/4095681?from=50475&to=62686",
+          "host": [
+            "{{carrier_api_url}}"
+          ],
+          "path": [
+            "races",
+            "4095681"
+          ],
+          "query": [
+            {
+              "key": "from",
+              "value": "50475",
+              "description": "ID станции отправления"
+            },
+            {
+              "key": "to",
+              "value": "62686",
+              "description": "ID станции прибытия"
+            }
+          ]
+        },
+        "description": "Получить информацию о конкретном рейсе"
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "carrier_api_url",
+      "value": "http://rc.rfbus.ru:8086",
+      "type": "string"
+    },
+    {
+      "key": "carrier_api_token",
+      "value": "your_token_here",
+      "type": "string"
+    }
+  ]
+}
