@@ -18,6 +18,10 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
     Route::get('/', function () {
         return view('admin.index');
     })->name('admin.dashboard');
+    
+    Route::get('/settings', function () {
+        return view('admin.settings');
+    })->name('admin.settings');
 });
 
 

@@ -119,25 +119,30 @@
                 <div class="setting-item">
                     <h3>📡 API Перевозчика</h3>
                     <p>Синхронизация данных с системой перевозчика</p>
-                    <button class="btn btn-primary" onclick="alert('Синхронизация станций...')">
-                        Синхронизировать станции
-                    </button>
+                    <div style="display: flex; gap: 10px;">
+                        <a href="/admin/settings#carrier" class="btn btn-primary" style="text-decoration: none; display: inline-block;">
+                            Настроить API
+                        </a>
+                        <button class="btn btn-secondary" onclick="syncStations()">
+                            Синхронизировать станции
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="setting-item">
                     <h3>✉️ Email настройки</h3>
                     <p>Конфигурация SMTP сервера для отправки писем</p>
-                    <button class="btn btn-primary" onclick="alert('Тест email отправки...')">
-                        Проверить подключение
-                    </button>
+                    <a href="/admin/settings#email" class="btn btn-primary" style="text-decoration: none; display: inline-block;">
+                        Настроить Email
+                    </a>
                 </div>
                 
                 <div class="setting-item">
                     <h3>📱 WhatsApp API</h3>
-                    <p>Настройка подключения к WhatsApp Business API</p>
-                    <button class="btn btn-primary" onclick="alert('Тест WhatsApp API...')">
-                        Проверить подключение
-                    </button>
+                    <p>Настройка подключения к Wappi.pro WhatsApp API</p>
+                    <a href="/admin/settings#whatsapp" class="btn btn-primary" style="text-decoration: none; display: inline-block;">
+                        Настроить WhatsApp
+                    </a>
                 </div>
                 
                 <div class="setting-item">

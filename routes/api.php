@@ -9,6 +9,10 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 */
 
+// Webhook для Wappi.pro (с проверкой токена через middleware)
+Route::post('/webhooks/wappi', 'App\Http\Controllers\Api\WebhookController@handle')
+    ->middleware('verify.wappi');
+
 Route::middleware(['auth:sanctum'])->group(function () {
     
     // Получение информации о текущем пользователе
@@ -55,6 +59,15 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/', 'App\Http\Controllers\Api\TemplateController@store');
         Route::put('/{id}', 'App\Http\Controllers\Api\TemplateController@update');
         Route::delete('/{id}', 'App\Http\Controllers\Api\TemplateController@destroy');
+    });
+
+    // Настройки (только для администратора)
+    Route::prefix('settings')->middleware('role:admin')->group(function () {
+        Route::get('/', 'App\Http\Controllers\Api\SettingsController@index');
+        Route::post('/', 'App\Http\Controllers\Api\SettingsController@store');
+        Route::post('/test/whatsapp', 'App\Http\Controllers\Api\SettingsController@testWhatsApp');
+        Route::post('/test/email', 'App\Http\Controllers\Api\SettingsController@testEmail');
+        Route::post('/test/carrier-api', 'App\Http\Controllers\Api\SettingsController@testCarrierApi');
     });
 });
 

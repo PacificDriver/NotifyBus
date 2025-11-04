@@ -9,10 +9,12 @@ return [
     */
 
     'whatsapp' => [
-        'api_url' => env('WHATSAPP_API_URL'),
+        'api_url' => env('WHATSAPP_API_URL', 'https://api.wappi.pro'),
         'api_token' => env('WHATSAPP_API_TOKEN'),
-        'from_number' => env('WHATSAPP_FROM_NUMBER'),
+        'profile_id' => env('WHATSAPP_PROFILE_ID'),
         'daily_limit' => env('WHATSAPP_DAILY_LIMIT', 1000),
+        'use_async' => env('WHATSAPP_USE_ASYNC', true), // Использовать асинхронную отправку
+        'webhook_secret' => env('WHATSAPP_WEBHOOK_SECRET'), // Секретный ключ для верификации webhook
     ],
 
     'carrier_api' => [

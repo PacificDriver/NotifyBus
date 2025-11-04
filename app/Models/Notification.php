@@ -25,6 +25,8 @@ class Notification extends Model
         'delivered_at',
         'failed_at',
         'metadata',
+        'external_message_id',
+        'external_task_id',
     ];
 
     protected function casts(): array

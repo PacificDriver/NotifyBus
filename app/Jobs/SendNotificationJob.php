@@ -83,11 +83,33 @@ class SendNotificationJob implements ShouldQueue
     {
         $whatsappService = app(WhatsAppService::class);
         
-        $whatsappService->send(
+        $result = $whatsappService->send(
             to: $this->notification->recipient,
             message: $this->notification->message,
             metadata: $this->notification->metadata ?? []
         );
+
+        // Сохраняем внешние ID сообщения/задачи
+        $updateData = [];
+        
+        if (isset($result['message_id'])) {
+            $updateData['external_message_id'] = $result['message_id'];
+        }
+        if (isset($result['task_id'])) {
+            $updateData['external_task_id'] = $result['task_id'];
+        }
+        
+        // Также сохраняем в metadata для совместимости
+        $metadata = $this->notification->metadata ?? [];
+        if (isset($result['message_id'])) {
+            $metadata['external_message_id'] = $result['message_id'];
+        }
+        if (isset($result['task_id'])) {
+            $metadata['external_task_id'] = $result['task_id'];
+        }
+        $updateData['metadata'] = $metadata;
+        
+        $this->notification->update($updateData);
     }
 
     /**
