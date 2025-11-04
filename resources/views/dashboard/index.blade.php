@@ -200,8 +200,14 @@
 <body>
     <div class="header">
         <h1>📱 Панель оператора</h1>
-        <div>
+        <div style="display: flex; align-items: center; gap: 20px;">
             <span style="color: #666;">Оператор: <strong>{{ auth()->user()->name ?? 'Тестовый пользователь' }}</strong></span>
+            <form method="POST" action="{{ route('logout') }}" style="margin: 0;">
+                @csrf
+                <button type="submit" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem;">
+                    Выйти
+                </button>
+            </form>
         </div>
     </div>
     

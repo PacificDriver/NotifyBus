@@ -110,6 +110,15 @@
 <body>
     <div class="header">
         <h1>⚙️ Панель администратора</h1>
+        <div style="display: flex; align-items: center; gap: 20px;">
+            <span style="color: white;">Администратор: <strong>{{ auth()->user()->name ?? 'Администратор' }}</strong></span>
+            <form method="POST" action="{{ route('logout') }}" style="margin: 0;">
+                @csrf
+                <button type="submit" style="padding: 8px 16px; background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; cursor: pointer; font-size: 0.9rem;">
+                    Выйти
+                </button>
+            </form>
+        </div>
     </div>
     
     <div class="container">

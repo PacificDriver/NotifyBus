@@ -152,13 +152,19 @@
         </div>
         
         <div class="buttons">
-            <a href="/dashboard" class="btn btn-primary">Панель оператора</a>
-            <a href="/admin" class="btn btn-secondary">Панель администратора</a>
+            <a href="{{ route('login') }}" class="btn btn-primary">Войти в систему</a>
             <a href="/api/user" class="btn btn-secondary">API Документация</a>
         </div>
         
         <div class="info">
             <strong>Для начала работы:</strong> Войдите в систему под учетной записью оператора или администратора. 
+            <br><br>
+            <strong>Тестовые учетные записи:</strong>
+            <ul style="margin-top: 10px; margin-left: 20px;">
+                <li><strong>Администратор:</strong> admin@busnotifications.ru / password</li>
+                <li><strong>Оператор:</strong> operator@busnotifications.ru / password</li>
+            </ul>
+            <br>
             Если база данных пуста, выполните команду <code>php artisan db:seed</code> для создания тестовых данных.
         </div>
     </div>

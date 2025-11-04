@@ -14,15 +14,23 @@ class CheckRole
     public function handle(Request $request, Closure $next, string $role): Response
     {
         if (!$request->user()) {
-            return response()->json(['message' => 'Unauthenticated.'], 401);
+            // Для веб-запросов перенаправляем на логин, для API - JSON
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Unauthenticated.'], 401);
+            }
+            return redirect()->route('login');
         }
 
         if ($request->user()->role !== $role) {
-            return response()->json([
-                'message' => 'Insufficient permissions.',
-                'required_role' => $role,
-                'user_role' => $request->user()->role,
-            ], 403);
+            // Для веб-запросов перенаправляем на dashboard, для API - JSON
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => 'Insufficient permissions.',
+                    'required_role' => $role,
+                    'user_role' => $request->user()->role,
+                ], 403);
+            }
+            return redirect()->route('dashboard')->with('error', 'Недостаточно прав доступа.');
         }
 
         return $next($request);
