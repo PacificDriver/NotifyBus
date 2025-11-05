@@ -714,6 +714,7 @@
                 settings[key] = value;
             });
 
+            console.log('Testing Carrier API connection with settings:', settings);
             showAlert('Проверка подключения...', 'info');
             
             try {
@@ -729,11 +730,20 @@
                     body: JSON.stringify({ settings }),
                 });
 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-
+                console.log('Response status:', response.status);
+                
                 const data = await response.json();
+                console.log('Response data:', data);
+
+                if (!response.ok) {
+                    // Обрабатываем ошибки с сервера
+                    if (response.status === 403) {
+                        throw new Error('Доступ запрещён. Требуется роль администратора.');
+                    } else if (response.status === 401) {
+                        throw new Error('Не авторизован. Пожалуйста, войдите в систему.');
+                    }
+                    throw new Error(data.message || `HTTP ${response.status}: ${response.statusText}`);
+                }
 
                 if (data.success) {
                     showAlert('✅ Подключение к API Перевозчика успешно!', 'success');
@@ -741,7 +751,8 @@
                     throw new Error(data.message || 'Неизвестная ошибка подключения');
                 }
             } catch (error) {
-                showAlert('⚠️ В текущий момент сервис недоступен.\n\nОшибка подключения к API Перевозчика: ' + error.message + '\n\nОбратитесь к администратору для проверки настроек.', 'error');
+                console.error('Error testing Carrier API:', error);
+                showAlert('⚠️ Ошибка подключения к API Перевозчика:\n\n' + error.message + '\n\nПроверьте консоль браузера для деталей.', 'error');
             }
         }
 
@@ -762,6 +773,8 @@
             button.textContent = '⏳ Синхронизация...';
             resultDiv.innerHTML = '<div class="alert alert-info">Синхронизация станций...</div>';
             
+            console.log('Starting stations sync...');
+            
             try {
                 const response = await fetch(`${API_BASE}/stations/sync`, {
                     method: 'POST',
@@ -773,11 +786,20 @@
                     credentials: 'include',
                 });
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-
+                console.log('Sync response status:', response.status);
+                
                 const data = await response.json();
+                console.log('Sync response data:', data);
+                
+                if (!response.ok) {
+                    // Обрабатываем ошибки с сервера
+                    if (response.status === 403) {
+                        throw new Error('Доступ запрещён. Требуется роль администратора.');
+                    } else if (response.status === 401) {
+                        throw new Error('Не авторизован. Пожалуйста, войдите в систему.');
+                    }
+                    throw new Error(data.message || `HTTP ${response.status}: ${response.statusText}`);
+                }
 
                 if (data.success) {
                     resultDiv.innerHTML = `<div class="alert alert-success">✅ Синхронизация завершена успешно!<br>Синхронизировано станций: <strong>${data.synced_count || 0}</strong></div>`;
@@ -786,7 +808,13 @@
                 }
             } catch (error) {
                 console.error('Error syncing stations:', error);
-                resultDiv.innerHTML = `<div class="alert alert-error">⚠️ В текущий момент сервис недоступен.<br><br>Ошибка синхронизации станций: ${error.message}<br><br>Обратитесь к администратору для проверки настроек API Перевозчика.</div>`;
+                let errorMessage = error.message;
+                if (error.message.includes('403') || error.message.includes('Доступ запрещён')) {
+                    errorMessage = 'Доступ запрещён. Убедитесь, что вы вошли как администратор.';
+                } else if (error.message.includes('401') || error.message.includes('Не авторизован')) {
+                    errorMessage = 'Сессия истекла. Пожалуйста, войдите в систему заново.';
+                }
+                resultDiv.innerHTML = `<div class="alert alert-error">⚠️ Ошибка синхронизации станций:<br><br>${errorMessage}<br><br>Проверьте консоль браузера (F12) для деталей.</div>`;
             } finally {
                 button.disabled = false;
                 button.textContent = originalText;

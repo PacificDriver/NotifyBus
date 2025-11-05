@@ -213,15 +213,32 @@
     </div>
     
     <div id="app" class="container">
-        <!-- Шаг 1: Поиск отмененных рейсов -->
-        <div class="card">
+        <!-- Шаг 1: Создание задачи на рассылку -->
+        <div class="card" v-if="!currentTask">
             <h2>📨 Создать рассылку уведомлений</h2>
             
             <div style="margin-bottom: 30px;">
-                <h3 style="margin-bottom: 15px; color: #555;">Шаг 1: Поиск отмененных рейсов</h3>
+                <h3 style="margin-bottom: 15px; color: #555;">Шаг 1: Создать задачу на рассылку</h3>
                 <p style="color: #666; margin-bottom: 20px;">
-                    Выберите маршрут и дату, чтобы найти отмененные рейсы.
+                    Введите название задачи для удобства поиска в истории рассылок.
                 </p>
+                <div class="form-group">
+                    <label>Название задачи</label>
+                    <input type="text" v-model="taskTitle" placeholder="Например: Отмена рейсов 05.11.2025" style="padding: 12px; font-size: 1rem;">
+                </div>
+                <button class="btn btn-success" @click="createTask" :disabled="creatingTask || !taskTitle">
+                    <span v-if="creatingTask">⏳ Создание...</span>
+                    <span v-else>📝 Создать задачу</span>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Шаг 2: Поиск отмененных рейсов -->
+        <div class="card" v-if="currentTask && currentTaskRacesCount === 0">
+            <h3 style="margin-bottom: 15px; color: #555;">Шаг 2: Найти отмененные рейсы</h3>
+            <p style="color: #666; margin-bottom: 20px;">
+                Задача «<strong>@{{ currentTask.title }}</strong>» создана. Теперь найдите отмененные рейсы.
+            </p>
                 <div class="grid">
                     <div class="form-group">
                         <label>Станция «Откуда»</label>
@@ -250,11 +267,11 @@
                     <span v-if="searching">⏳ Поиск...</span>
                     <span v-else>🔍 Найти отмененные рейсы</span>
                 </button>
-            </div>
-        
+            
             <!-- Выбор найденных рейсов -->
-            <div v-if="races.length > 0" style="margin-bottom: 30px;">
-                <h3 style="margin-bottom: 15px; color: #555;">Найдено отмененных рейсов: <strong>@{{ races.length }}</strong></h3>
+            <div v-if="races.length > 0" style="margin-top: 30px;">
+                <h4 style="margin-bottom: 15px; color: #555;">Шаг 3: Выбор отмененных рейсов</h4>
+                <p style="margin-bottom: 15px; color: #666;">Найдено отмененных рейсов: <strong>@{{ races.length }}</strong></p>
                 
                 <div style="margin-bottom: 15px;">
                     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px; background: #f8f9fa; border-radius: 6px;">
@@ -289,64 +306,36 @@
                 <div style="margin-top: 20px;">
                     <button class="btn btn-success" @click="addRacesToTask" :disabled="selectedRaces.length === 0 || addingRaces">
                         <span v-if="addingRaces">⏳ Добавление...</span>
-                        <span v-else>➕ Добавить выбранные рейсы в задачу (@{{ selectedRaces.length }} рейсов)</span>
+                        <span v-else>➕ Добавить выбранные рейсы в задачу (@{{ selectedRaces.length }})</span>
                     </button>
                 </div>
             </div>
             
-            <div class="card" v-if="races.length === 0 && searchPerformed" style="margin-top: 20px;">
-                <p style="color: #666; text-align: center; padding: 20px;">
-                    Отмененных рейсов не найдено для выбранных параметров
-                </p>
+            <div v-if="races.length === 0 && searchPerformed" style="margin-top: 20px; padding: 20px; background: #fff3cd; border-radius: 8px; color: #856404;">
+                ℹ️ Отмененных рейсов не найдено для выбранных параметров
             </div>
+        </div>
         
-        <!-- Шаг 3: Загрузка пассажиров и отправка -->
+        <!-- Шаг 4: Загрузка пассажиров и отправка -->
         <div class="card" v-if="currentTask && currentTaskRacesCount > 0">
-            <h3 style="margin-bottom: 15px; color: #555;">Шаг 3: Загрузка пассажиров и отправка</h3>
+            <h3 style="margin-bottom: 15px; color: #555;">Шаг 4: Загрузка пассажиров и отправка</h3>
             <p style="margin-bottom: 15px; color: #666;">
                 Задача: <strong>@{{ currentTask.title }}</strong><br>
                 Рейсов в задаче: <strong>@{{ currentTaskRacesCount }}</strong>
             </p>
             
-            <div class="form-group">
-                <label>Выберите шаблон сообщения</label>
-                <select v-model="notificationForm.templateId">
-                    <option value="">Без шаблона (свой текст)</option>
-                    <option v-for="template in templates" :key="template.id" :value="template.id">
-                        @{{ template.name }}
-                    </option>
-                </select>
-            </div>
+            <button class="btn btn-primary" @click="loadPassengersForTask" :disabled="loadingPassengers" style="margin-bottom: 20px;">
+                <span v-if="loadingPassengers">⏳ Загрузка пассажиров...</span>
+                <span v-else>📋 Загрузить список пассажиров</span>
+            </button>
             
-            <div class="form-group">
-                <label>Текст сообщения</label>
-                <textarea v-model="notificationForm.message" rows="6" 
-                          placeholder="Введите текст сообщения..."></textarea>
-                <small style="color: #666;">
-                    Доступные переменные: <strong>{РЕЙС}, {ДАТА}, {ВРЕМЯ}</strong>
-                </small>
-            </div>
-            
-            <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button class="btn btn-primary" @click="loadPassengersForTask" :disabled="loadingPassengers">
-                    <span v-if="loadingPassengers">⏳ Загрузка...</span>
-                    <span v-else>📋 Загрузить список пассажиров</span>
-                </button>
-                
-                <button class="btn btn-success" @click="sendNotifications" :disabled="!passengersLoaded || sending">
-                    <span v-if="sending">⏳ Отправка...</span>
-                    <span v-else>✉️ Отправить уведомления</span>
-                </button>
-            </div>
-            
-            <!-- Список загруженных пассажиров с возможностью исключения -->
-            <div v-if="passengers.length > 0" style="margin-top: 20px;">
-                <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; margin-bottom: 15px;">
-                    <strong>Пассажиры загружены:</strong><br>
+            <!-- Шаг 5: Выбор пассажиров -->
+            <div v-if="passengers.length > 0" style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e0e0e0;">
+                <h4 style="margin-bottom: 15px; color: #555;">Шаг 5: Выбор/исключение пассажиров</h4>
+                <div style="padding: 15px; background: #e8f5e9; border-radius: 8px; margin-bottom: 15px;">
+                    <strong>✅ Пассажиры загружены:</strong><br>
                     Всего: @{{ passengers.length }} | С email: @{{ passengersWithEmail }} | С телефоном: @{{ passengersWithPhone }}
                 </div>
-                
-                <h4 style="margin-bottom: 10px; color: #555;">Список пассажиров</h4>
                 <div style="margin-bottom: 15px;">
                     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px; background: #f8f9fa; border-radius: 6px;">
                         <input type="checkbox" @change="toggleAllPassengers" :checked="selectedPassengers.length === passengers.length && passengers.length > 0" style="width: 18px; height: 18px; cursor: pointer;">
@@ -376,8 +365,43 @@
                         </label>
                     </div>
                 </div>
+                
+                <!-- Шаг 6: Выбор шаблона и отправка -->
+                <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e0e0e0;">
+                    <h4 style="margin-bottom: 15px; color: #555;">Шаг 6: Выбор шаблона и отправка</h4>
+                    
+                    <div class="form-group">
+                        <label>Выберите шаблон сообщения (или введите свой текст)</label>
+                        <select v-model="notificationForm.templateId" style="margin-bottom: 15px;">
+                            <option value="">Без шаблона (свой текст)</option>
+                            <option v-for="template in templates" :key="template.id" :value="template.id">
+                                @{{ template.name }}
+                            </option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Текст сообщения</label>
+                        <textarea v-model="notificationForm.message" rows="6" 
+                                  placeholder="Введите текст сообщения или выберите шаблон..."></textarea>
+                        <small style="color: #666; display: block; margin-top: 8px;">
+                            📝 Доступные переменные для подстановки: <strong>{РЕЙС}</strong>, <strong>{ДАТА}</strong>, <strong>{ВРЕМЯ}</strong>
+                        </small>
+                        <small style="color: #888; display: block; margin-top: 4px;">
+                            Пример: "Ваш рейс <strong>{РЕЙС}</strong> на <strong>{ДАТА}</strong> в <strong>{ВРЕМЯ}</strong> отменен."
+                        </small>
+                    </div>
+                    
+                    <button class="btn btn-success" @click="sendNotifications" 
+                            :disabled="!notificationForm.message || selectedPassengers.length === 0 || sending"
+                            style="margin-top: 15px;">
+                        <span v-if="sending">⏳ Отправка уведомлений...</span>
+                        <span v-else>✉️ Отправить уведомления (@{{ selectedPassengers.length }} пассажирам)</span>
+                    </button>
+                </div>
             </div>
             
+            <!-- Статистика отправки -->
             <div class="stats" v-if="stats.total > 0" style="margin-top: 20px;">
                 <div class="stat-box">
                     <div class="number">@{{ stats.total }}</div>
@@ -406,13 +430,11 @@
             data() {
                 return {
                     stations: [],
+                    taskTitle: '', // Название задачи для создания
                     searchForm: {
                         from: '',
                         to: '',
                         date: new Date().toISOString().split('T')[0]
-                    },
-                    taskForm: {
-                        title: ''
                     },
                     races: [], // Отмененные рейсы из API
                     selectedRaces: [], // Выбранные ID рейсов
@@ -611,6 +633,11 @@
                 },
                 
                 async createTask() {
+                    if (!this.taskTitle.trim()) {
+                        alert('Введите название задачи');
+                        return;
+                    }
+                    
                     this.creatingTask = true;
                     
                     try {
@@ -624,7 +651,7 @@
                             },
                             credentials: 'include',
                             body: JSON.stringify({
-                                title: this.taskForm.title || null,
+                                title: this.taskTitle,
                             }),
                         });
                         
@@ -636,12 +663,8 @@
                         
                         if (data.success) {
                             this.currentTask = data.data;
-                            alert(`✅ Задача создана успешно! ID: ${data.data.id}\n\nТеперь можно добавить отмененные рейсы.`);
-                            // Очищаем форму
-                            this.taskForm.title = '';
-                            this.races = [];
-                            this.selectedRaces = [];
-                            this.searchPerformed = false;
+                            alert(`✅ Задача создана успешно!\n\nНазвание: ${data.data.title}\nID: ${data.data.id}\n\nТеперь найдите отмененные рейсы.`);
+                            // НЕ очищаем форму - оператор продолжит работу с задачей
                         } else {
                             throw new Error(data.message || 'Не удалось создать задачу');
                         }

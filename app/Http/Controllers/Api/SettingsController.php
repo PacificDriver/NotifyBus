@@ -339,30 +339,41 @@ class SettingsController extends Controller
                 }
             }
 
-            $carrierService = app(CarrierApiService::class);
+            // Создаём новый экземпляр сервиса с обновлёнными настройками
+            $carrierService = new CarrierApiService();
             
-            // Пробуем выполнить простой запрос для проверки подключения
-            // Используем метод, который есть в CarrierApiService
-            // Если метод getStations не существует, можно просто проверить конфигурацию
-            if (method_exists($carrierService, 'getStations')) {
-                $response = $carrierService->getStations();
-            } else {
-                // Просто проверяем, что настройки загружены
-                $config = config('services.carrier_api');
-                if (empty($config['key']) || empty($config['url'])) {
-                    throw new \Exception('API key or URL not configured');
-                }
+            Log::info('Testing Carrier API connection', [
+                'temp_settings_keys' => array_keys($tempSettings),
+            ]);
+            
+            // Пробуем подключиться
+            $isConnected = $carrierService->checkConnection();
+            
+            if (!$isConnected) {
+                throw new \Exception('Не удалось установить соединение с API. Проверьте правильность URL и ключа API.');
             }
+            
+            // Дополнительно пробуем получить станции для полной проверки
+            $stations = $carrierService->getStations();
+            
+            Log::info('Carrier API test successful', [
+                'stations_count' => is_array($stations) ? count($stations) : 0,
+            ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Carrier API connection successful',
+                'message' => 'Подключение к API Перевозчика успешно! Получено станций: ' . (is_array($stations) ? count($stations) : 0),
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Carrier API test failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
             return response()->json([
                 'success' => false,
-                'message' => 'Carrier API connection failed: ' . $e->getMessage(),
+                'message' => $e->getMessage(),
             ], 400);
         }
     }
