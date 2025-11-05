@@ -388,7 +388,7 @@
                     <div class="form-group">
                         <label for="carrier_api_key">API Key (x-access-token)</label>
                         <input type="password" id="carrier_api_key" name="key" placeholder="Ваш API ключ">
-                        <small>Токен доступа для API перевозчика (будет сохранен как маска)</small>
+                        <small>Токен доступа для API перевозчика</small>
                     </div>
 
                     <div class="form-group">
@@ -443,7 +443,7 @@
                     <div class="form-group">
                         <label for="external_db_password">Password</label>
                         <input type="password" id="external_db_password" name="password" placeholder="Пароль">
-                        <small>Пароль будет сохранен как маска, реальное значение должно быть в .env файле (EXTERNAL_DB_PASSWORD)</small>
+                        <small>Пароль будет сохранен в базе данных с шифрованием</small>
                     </div>
 
                     <div class="form-row">
@@ -545,6 +545,12 @@
                 if (input) {
                     if (input.type === 'checkbox') {
                         input.checked = settings[key] === true || settings[key] === '1' || settings[key] === 1;
+                    } else if (input.type === 'password') {
+                        // Для паролей не заполняем автоматически, чтобы не показывать маску
+                        // Пользователь может ввести новый пароль, если нужно его изменить
+                        if (!input.value) {
+                            input.placeholder = settings[key] ? 'Введите новый пароль для изменения' : 'Введите пароль';
+                        }
                     } else {
                         input.value = settings[key] || '';
                     }
@@ -581,6 +587,12 @@
         async function saveSettings(group, formData) {
             const settings = {};
             formData.forEach((value, key) => {
+                // Пропускаем пустые значения для паролей (чтобы не затереть существующие)
+                if (key === 'key' || key === 'password' || key === 'api_token' || key === 'webhook_secret') {
+                    if (!value || value.trim() === '') {
+                        return; // Пропускаем пустые пароли
+                    }
+                }
                 settings[key] = value;
             });
 
@@ -613,11 +625,7 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    let message = 'Настройки успешно сохранены!';
-                    if (data.warnings && data.warnings.length > 0) {
-                        message += '\n\n⚠️ Внимание:\n' + data.warnings.join('\n');
-                    }
-                    showAlert(message, 'success');
+                    showAlert('✅ ' + (data.message || 'Настройки успешно сохранены в базу данных!'), 'success');
                 } else {
                     throw new Error(data.message || 'Неизвестная ошибка');
                 }
@@ -771,11 +779,15 @@
             
             button.disabled = true;
             button.textContent = '⏳ Синхронизация...';
-            resultDiv.innerHTML = '<div class="alert alert-info">Синхронизация станций...</div>';
+            resultDiv.innerHTML = '<div class="alert alert-info">⏳ Синхронизация станций с API перевозчика...<br><small>Это может занять до 30 секунд</small></div>';
             
             console.log('Starting stations sync...');
             
             try {
+                // Создаём AbortController для таймаута (45 секунд)
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 45000);
+                
                 const response = await fetch(`${API_BASE}/stations/sync`, {
                     method: 'POST',
                     headers: {
@@ -784,7 +796,10 @@
                         'X-Requested-With': 'XMLHttpRequest',
                     },
                     credentials: 'include',
+                    signal: controller.signal,
                 });
+                
+                clearTimeout(timeoutId);
                 
                 console.log('Sync response status:', response.status);
                 
@@ -809,12 +824,27 @@
             } catch (error) {
                 console.error('Error syncing stations:', error);
                 let errorMessage = error.message;
-                if (error.message.includes('403') || error.message.includes('Доступ запрещён')) {
+                
+                if (error.name === 'AbortError') {
+                    errorMessage = 'Превышен лимит времени ожидания (45 сек).<br><br>' +
+                                   '<strong>Возможные причины:</strong><br>' +
+                                   '• Неверный ключ API (проверьте CARRIER_API_KEY в .env)<br>' +
+                                   '• API перевозчика недоступен<br>' +
+                                   '• Проблемы с сетевым подключением<br><br>' +
+                                   '<strong>Решение:</strong><br>' +
+                                   '1. Проверьте логи Laravel: <code>tail -f storage/logs/laravel.log</code><br>' +
+                                   '2. Проверьте настройки API в разделе "API Перевозчика" выше<br>' +
+                                   '3. Нажмите "Проверить подключение" для диагностики';
+                } else if (error.message.includes('403') || error.message.includes('Доступ запрещён')) {
                     errorMessage = 'Доступ запрещён. Убедитесь, что вы вошли как администратор.';
                 } else if (error.message.includes('401') || error.message.includes('Не авторизован')) {
                     errorMessage = 'Сессия истекла. Пожалуйста, войдите в систему заново.';
+                } else if (error.message.includes('ключ') || error.message.includes('x-access-token')) {
+                    errorMessage += '<br><br><strong>💡 Совет:</strong> Обновите ключ API в .env файле и выполните:<br>' +
+                                    '<code>php artisan config:clear && php artisan cache:clear</code>';
                 }
-                resultDiv.innerHTML = `<div class="alert alert-error">⚠️ Ошибка синхронизации станций:<br><br>${errorMessage}<br><br>Проверьте консоль браузера (F12) для деталей.</div>`;
+                
+                resultDiv.innerHTML = `<div class="alert alert-error">⚠️ Ошибка синхронизации станций:<br><br>${errorMessage}</div>`;
             } finally {
                 button.disabled = false;
                 button.textContent = originalText;

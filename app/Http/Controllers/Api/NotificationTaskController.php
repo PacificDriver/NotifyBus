@@ -41,36 +41,46 @@ class NotificationTaskController extends Controller
     /**
      * Создать новую задачу на рассылку
      * Задача создается без рейсов, рейсы добавляются позже через addRaces
+     * Название задачи генерируется автоматически на основе текущей даты и времени
      */
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'title' => 'nullable|string|max:255',
             'template_id' => 'nullable|exists:message_templates,id',
             'custom_message' => 'nullable|string',
             'scheduled_at' => 'nullable|date|after:now',
         ]);
 
-        // Генерируем название задачи, если не указано
-        $title = $validated['title'] ?? 'Рассылка уведомлений - ' . now()->format('d.m.Y H:i');
+        try {
+            // Название задачи генерируется автоматически в модели на основе текущей даты и времени
+            $task = NotificationTask::create([
+                'races_data' => [], // Пустой массив, рейсы добавляются позже
+                'trip_ids' => [], // Пустой массив, будет заполнен после загрузки пассажиров
+                'template_id' => $validated['template_id'] ?? null,
+                'custom_message' => $validated['custom_message'] ?? null,
+                'created_by' => $request->user()->id,
+                'total_recipients' => 0, // Будет заполнено после загрузки пассажиров
+                'status' => 'draft',
+                'scheduled_at' => $validated['scheduled_at'] ?? null,
+            ]);
 
-        $task = NotificationTask::create([
-            'title' => $title,
-            'races_data' => [], // Пустой массив, рейсы добавляются позже
-            'trip_ids' => [], // Пустой массив, будет заполнен после загрузки пассажиров
-            'template_id' => $validated['template_id'] ?? null,
-            'custom_message' => $validated['custom_message'] ?? null,
-            'created_by' => $request->user()->id,
-            'total_recipients' => 0, // Будет заполнено после загрузки пассажиров
-            'status' => 'draft',
-            'scheduled_at' => $validated['scheduled_at'] ?? null,
-        ]);
+            return response()->json([
+                'success' => true,
+                'data' => $task,
+                'message' => 'Задача создана успешно. Теперь можно добавить отмененные рейсы.',
+            ], 201);
+            
+        } catch (\Exception $e) {
+            Log::error("Failed to create notification task", [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
 
-        return response()->json([
-            'success' => true,
-            'data' => $task,
-            'message' => 'Задача создана успешно. Теперь можно добавить отмененные рейсы.',
-        ], 201);
+            return response()->json([
+                'success' => false,
+                'message' => 'Ошибка при создании задачи: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**

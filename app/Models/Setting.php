@@ -84,15 +84,16 @@ class Setting extends Model
      */
     public static function set(string $key, $value, string $group = 'general', string $type = 'string', bool $encrypted = false): void
     {
-        static::updateOrCreate(
-            ['key' => $key],
-            [
-                'value' => $value,
-                'group' => $group,
-                'type' => $type,
-                'is_encrypted' => $encrypted,
-            ]
-        );
+        $setting = static::firstOrNew(['key' => $key]);
+        
+        // Устанавливаем атрибуты в правильном порядке
+        // is_encrypted должен быть установлен ДО value, чтобы мутатор setValueAttribute правильно работал
+        $setting->is_encrypted = $encrypted;
+        $setting->group = $group;
+        $setting->type = $type;
+        $setting->value = $value; // Это вызовет setValueAttribute, который зашифрует если is_encrypted = true
+        
+        $setting->save();
     }
 
     /**

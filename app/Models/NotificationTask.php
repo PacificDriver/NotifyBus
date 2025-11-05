@@ -25,6 +25,21 @@ class NotificationTask extends Model
         'completed_at',
     ];
 
+    /**
+     * Boot метод для автоматической генерации названия при создании
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($task) {
+            // Если название не указано, генерируем автоматически на основе текущей даты и времени
+            if (empty($task->title)) {
+                $task->title = 'Рассылка уведомлений - ' . now()->format('d.m.Y H:i:s');
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [

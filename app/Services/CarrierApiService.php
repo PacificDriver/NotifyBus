@@ -21,11 +21,9 @@ class CarrierApiService
 
     public function __construct()
     {
-        // Сначала берем из .env, затем из БД (настройки), затем из config
-        $this->apiUrl = env('CARRIER_API_URL') 
-            ?? $this->getSetting('url', config('services.carrier_api.url', 'http://rc.rfbus.ru:8086'));
-        $this->apiKey = env('CARRIER_API_KEY') 
-            ?? $this->getSetting('key', config('services.carrier_api.key', ''));
+        // Берем настройки из БД в первую очередь, затем из config как fallback
+        $this->apiUrl = $this->getSetting('url', config('services.carrier_api.url', 'http://rc.rfbus.ru:8086'));
+        $this->apiKey = $this->getSetting('key', config('services.carrier_api.key', ''));
         $this->timeout = (int) ($this->getSetting('timeout', config('services.carrier_api.timeout', 30)));
     }
 
@@ -105,11 +103,11 @@ class CarrierApiService
 
                 // Проверяем наличие обязательных данных
                 if (empty($this->apiKey)) {
-                    throw new \Exception("API key is not configured. Please set CARRIER_API_KEY in .env or admin settings.");
+                    throw new \Exception("API ключ не настроен. Пожалуйста, настройте API ключ в админ-панели (раздел 'API Перевозчика').");
                 }
 
                 if (empty($this->apiUrl)) {
-                    throw new \Exception("API URL is not configured. Please set CARRIER_API_URL in .env or admin settings.");
+                    throw new \Exception("API URL не настроен. Пожалуйста, настройте API URL в админ-панели (раздел 'API Перевозчика').");
                 }
                 
                 $request = Http::withHeaders($this->getHeaders())

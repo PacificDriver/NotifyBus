@@ -49,14 +49,23 @@ class SettingsController extends Controller
      */
     protected function checkCarrierApiStatus(): array
     {
-        $apiKey = $this->getSettingValue('carrier_api', 'key') ?? config('services.carrier_api.key');
-        $apiUrl = $this->getSettingValue('carrier_api', 'url') ?? config('services.carrier_api.url');
+        // Берем из БД в первую очередь
+        $apiKey = $this->getSettingValue('carrier_api', 'key');
+        $apiUrl = $this->getSettingValue('carrier_api', 'url');
+        
+        // Fallback на config если в БД нет
+        if (empty($apiKey)) {
+            $apiKey = config('services.carrier_api.key');
+        }
+        if (empty($apiUrl)) {
+            $apiUrl = config('services.carrier_api.url');
+        }
         
         $isConfigured = !empty($apiKey) && !empty($apiUrl);
         
         return [
             'configured' => $isConfigured,
-            'message' => $isConfigured ? 'Настроен' : 'Не настроен (требуется конфигурация)',
+            'message' => $isConfigured ? 'Настроен' : 'Не настроен (требуется конфигурация в админ-панели)',
         ];
     }
 
@@ -91,7 +100,7 @@ class SettingsController extends Controller
 
     /**
      * Получить все настройки
-     * Для секретных полей возвращает маски, реальные значения берутся из .env
+     * Для секретных полей возвращает маски для безопасности отображения
      */
     public function index(Request $request)
     {
@@ -106,18 +115,10 @@ class SettingsController extends Controller
                 // Убираем префикс группы из ключа для удобства
                 $key = str_replace("{$group}_", '', $setting->key);
                 
-                // Для секретных полей показываем маску из БД, но реальное значение берем из .env
+                // Для секретных полей показываем маску для безопасности
                 if (in_array($key, $secretKeys)) {
-                    // Показываем маску из БД, но также проверяем .env
-                    $envKey = $this->getEnvKeyForSetting($group, $key);
-                    $envValue = env($envKey);
-                    
-                    // Если значение есть в .env, показываем маску, иначе значение из БД
-                    if ($envValue) {
-                        $result[$key] = $this->maskValue($envValue);
-                    } else {
-                        $result[$key] = $setting->value; // Маска из БД
-                    }
+                    $realValue = $setting->value; // Расшифрованное значение из БД
+                    $result[$key] = $this->maskValue($realValue);
                 } else {
                     $result[$key] = $setting->value;
                 }
@@ -134,14 +135,8 @@ class SettingsController extends Controller
                     
                     // Для секретных полей показываем маску
                     if (in_array($key, $secretKeys)) {
-                        $envKey = $this->getEnvKeyForSetting($groupName, $key);
-                        $envValue = env($envKey);
-                        
-                        if ($envValue) {
-                            $result[$key] = $this->maskValue($envValue);
-                        } else {
-                            $result[$key] = $item->value;
-                        }
+                        $realValue = $item->value; // Расшифрованное значение из БД
+                        $result[$key] = $this->maskValue($realValue);
                     } else {
                         $result[$key] = $item->value;
                     }
@@ -158,7 +153,7 @@ class SettingsController extends Controller
 
     /**
      * Сохранить настройки
-     * Для секретных полей сохраняет маску в БД, реальные значения должны быть в .env
+     * Секретные поля сохраняются в БД с шифрованием
      */
     public function store(Request $request)
     {
@@ -179,36 +174,34 @@ class SettingsController extends Controller
         $settings = $request->input('settings');
 
         try {
-            // Определяем, какие поля нужно зашифровать/замаскировать
+            // Определяем, какие поля нужно зашифровать
             $encryptedKeys = $this->getEncryptedKeys($group);
-            $warnings = [];
 
             foreach ($settings as $key => $value) {
                 $isSecret = in_array($key, $encryptedKeys);
                 // Сохраняем с префиксом группы для совместимости с сервисами
                 $fullKey = "{$group}_{$key}";
                 
-                // Для секретных полей сохраняем маску в БД
+                // Пропускаем пустые значения
+                if ($value === '' || $value === null) {
+                    continue;
+                }
+                
+                // Если значение уже замаскировано (начинается с ***), не меняем
+                if ($isSecret && (str_starts_with($value, '***') || str_starts_with($value, 'tok***'))) {
+                    // Это уже маска, не обновляем реальное значение
+                    continue;
+                }
+                
+                // Для секретных полей сохраняем реальное значение с шифрованием в БД
                 if ($isSecret && !empty($value)) {
-                    // Если значение уже замаскировано (начинается с ***), не меняем
-                    if (str_starts_with($value, '***') || str_starts_with($value, 'tok***')) {
-                        // Это уже маска, не обновляем
-                        continue;
-                    }
-                    
-                    // Сохраняем маску в БД
-                    $maskedValue = $this->maskValue($value);
                     Setting::set(
                         key: $fullKey,
-                        value: $maskedValue,
+                        value: $value, // Реальное значение, будет зашифровано автоматически
                         group: $group,
                         type: $this->getSettingType($key),
-                        encrypted: false // Не шифруем, т.к. это маска
+                        encrypted: true // Шифруем секретные значения
                     );
-                    
-                    // Добавляем предупреждение о необходимости обновить .env
-                    $envKey = $this->getEnvKeyForSetting($group, $key);
-                    $warnings[] = "Secret value for '{$key}' saved as mask. Please update .env file with key '{$envKey}' = '{$value}'";
                 } else {
                     // Для несекретных полей сохраняем как есть
                     Setting::set(
@@ -227,20 +220,12 @@ class SettingsController extends Controller
             Log::info("Settings updated", [
                 'group' => $group,
                 'keys' => array_keys($settings),
-                'warnings' => $warnings,
             ]);
 
-            $response = [
+            return response()->json([
                 'success' => true,
-                'message' => 'Settings saved successfully',
-            ];
-            
-            if (!empty($warnings)) {
-                $response['warnings'] = $warnings;
-                $response['message'] .= '. Please update .env file for secret values.';
-            }
-
-            return response()->json($response);
+                'message' => 'Настройки успешно сохранены в базу данных!',
+            ]);
 
         } catch (\Exception $e) {
             Log::error("Failed to save settings", [
@@ -330,41 +315,93 @@ class SettingsController extends Controller
     public function testCarrierApi(Request $request)
     {
         try {
-            // Сохраняем временные настройки из запроса
-            $tempSettings = $request->input('settings', []);
+            $settings = $request->input('settings', []);
             
-            if (!empty($tempSettings)) {
-                foreach ($tempSettings as $key => $value) {
-                    config(["services.carrier_api.{$key}" => $value]);
-                }
+            // Получаем URL и ключ из запроса
+            $testUrl = $settings['url'] ?? '';
+            $testKey = $settings['key'] ?? '';
+            
+            // Если ключ замаскирован или пустой, берём реальное значение из БД
+            if (empty($testKey) || str_starts_with($testKey, '***') || str_starts_with($testKey, 'tok***')) {
+                $testKey = $this->getSettingValue('carrier_api', 'key');
             }
-
-            // Создаём новый экземпляр сервиса с обновлёнными настройками
-            $carrierService = new CarrierApiService();
+            
+            // Если URL пустой, берём из БД
+            if (empty($testUrl)) {
+                $testUrl = $this->getSettingValue('carrier_api', 'url');
+            }
+            
+            // Fallback на config если в БД нет
+            if (empty($testUrl)) {
+                $testUrl = config('services.carrier_api.url');
+            }
+            if (empty($testKey)) {
+                $testKey = config('services.carrier_api.key');
+            }
+            
+            // Проверяем, что есть URL и ключ
+            if (empty($testUrl) || empty($testKey)) {
+                throw new \Exception('URL API и ключ доступа обязательны для проверки подключения. Пожалуйста, настройте их в разделе "API Перевозчика".');
+            }
             
             Log::info('Testing Carrier API connection', [
-                'temp_settings_keys' => array_keys($tempSettings),
+                'test_url' => $testUrl,
+                'key_present' => !empty($testKey),
+                'key_length' => strlen($testKey),
             ]);
             
-            // Пробуем подключиться
-            $isConnected = $carrierService->checkConnection();
+            // Выполняем тестовый запрос напрямую
+            $response = \Illuminate\Support\Facades\Http::timeout(15)
+                ->withHeaders([
+                    'x-access-token' => $testKey,
+                    'Accept' => 'application/json',
+                ])
+                ->get($testUrl . '/stations');
             
-            if (!$isConnected) {
-                throw new \Exception('Не удалось установить соединение с API. Проверьте правильность URL и ключа API.');
+            Log::info('Carrier API test response', [
+                'status' => $response->status(),
+                'successful' => $response->successful(),
+            ]);
+            
+            if (!$response->successful()) {
+                $errorMsg = 'Ошибка подключения к API Перевозчика. ';
+                
+                if ($response->status() === 401 || $response->status() === 403) {
+                    $errorMsg .= 'Неверный ключ доступа (x-access-token).';
+                } elseif ($response->status() === 404) {
+                    $errorMsg .= 'Неверный URL API или endpoint не найден.';
+                } elseif ($response->status() >= 500) {
+                    $errorMsg .= 'Сервер API недоступен или вернул ошибку.';
+                } else {
+                    $errorMsg .= 'HTTP ' . $response->status() . ': ' . $response->body();
+                }
+                
+                throw new \Exception($errorMsg);
             }
             
-            // Дополнительно пробуем получить станции для полной проверки
-            $stations = $carrierService->getStations();
+            $data = $response->json();
+            $stationsCount = is_array($data) ? count($data) : 0;
             
             Log::info('Carrier API test successful', [
-                'stations_count' => is_array($stations) ? count($stations) : 0,
+                'stations_count' => $stationsCount,
             ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Подключение к API Перевозчика успешно! Получено станций: ' . (is_array($stations) ? count($stations) : 0),
+                'message' => 'Подключение к API Перевозчика успешно! Получено станций: ' . $stationsCount,
+                'stations_count' => $stationsCount,
             ]);
 
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('Carrier API connection failed', [
+                'error' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Не удалось подключиться к серверу API. Проверьте правильность URL и доступность сервера.',
+            ], 400);
+            
         } catch (\Exception $e) {
             Log::error('Carrier API test failed', [
                 'error' => $e->getMessage(),
