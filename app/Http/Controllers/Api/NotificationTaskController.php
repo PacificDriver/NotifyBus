@@ -40,22 +40,23 @@ class NotificationTaskController extends Controller
 
     /**
      * Создать новую задачу на рассылку
-     * Принимает races_data - массив отмененных рейсов из API перевозчика
+     * Задача создается без рейсов, рейсы добавляются позже через addRaces
      */
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'races_data' => 'required|array|min:1', // Данные отмененных рейсов из API
-            'races_data.*.id' => 'required|string', // ID рейса (external_id)
+            'title' => 'nullable|string|max:255',
             'template_id' => 'nullable|exists:message_templates,id',
             'custom_message' => 'nullable|string',
             'scheduled_at' => 'nullable|date|after:now',
         ]);
 
+        // Генерируем название задачи, если не указано
+        $title = $validated['title'] ?? 'Рассылка уведомлений - ' . now()->format('d.m.Y H:i');
+
         $task = NotificationTask::create([
-            'title' => $validated['title'],
-            'races_data' => $validated['races_data'], // Сохраняем данные рейсов
+            'title' => $title,
+            'races_data' => [], // Пустой массив, рейсы добавляются позже
             'trip_ids' => [], // Пустой массив, будет заполнен после загрузки пассажиров
             'template_id' => $validated['template_id'] ?? null,
             'custom_message' => $validated['custom_message'] ?? null,
@@ -68,8 +69,63 @@ class NotificationTaskController extends Controller
         return response()->json([
             'success' => true,
             'data' => $task,
-            'message' => 'Notification task created successfully. Please load passengers next.',
+            'message' => 'Задача создана успешно. Теперь можно добавить отмененные рейсы.',
         ], 201);
+    }
+
+    /**
+     * Добавить отмененные рейсы в задачу
+     * PUT /api/notification-tasks/{id}/add-races
+     */
+    public function addRaces(Request $request, int $id): JsonResponse
+    {
+        $task = NotificationTask::findOrFail($id);
+
+        if ($task->status !== 'draft') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Нельзя изменить задачу со статусом: ' . $task->status,
+            ], 400);
+        }
+
+        $validated = $request->validate([
+            'races_data' => 'required|array|min:1',
+            'races_data.*.id' => 'required|string',
+            'races_data.*.active' => 'nullable|boolean',
+            'races_data.*.route_tz' => 'nullable|integer',
+            'races_data.*.dt_depart' => 'nullable|string',
+            'races_data.*.dt_arrive' => 'nullable|string',
+        ]);
+
+        // Получаем текущие рейсы
+        $currentRaces = $task->races_data ?? [];
+        
+        // Добавляем новые рейсы (проверяем на дубликаты по ID)
+        $existingIds = array_column($currentRaces, 'id');
+        $newRaces = [];
+        
+        foreach ($validated['races_data'] as $race) {
+            if (!in_array($race['id'], $existingIds)) {
+                $newRaces[] = $race;
+            }
+        }
+
+        // Объединяем старые и новые рейсы
+        $updatedRaces = array_merge($currentRaces, $newRaces);
+
+        $task->update([
+            'races_data' => $updatedRaces,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'task' => $task,
+                'added_count' => count($newRaces),
+                'total_races' => count($updatedRaces),
+            ],
+            'message' => 'Рейсы успешно добавлены в задачу.',
+        ]);
     }
 
     /**
@@ -212,6 +268,31 @@ class NotificationTaskController extends Controller
     }
 
     /**
+     * Получить список пассажиров для задачи
+     * GET /api/notification-tasks/{id}/passengers
+     */
+    public function getPassengers(int $id): JsonResponse
+    {
+        $task = NotificationTask::findOrFail($id);
+
+        if (empty($task->trip_ids)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No passengers loaded. Please load passengers first.',
+            ], 400);
+        }
+
+        $passengers = Passenger::whereIn('trip_id', $task->trip_ids)
+            ->with('trip')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $passengers,
+        ]);
+    }
+
+    /**
      * Запустить отправку уведомлений
      */
     public function send(Request $request, int $id): JsonResponse
@@ -232,28 +313,43 @@ class NotificationTaskController extends Controller
             ], 400);
         }
 
+        // Получаем список ID пассажиров для отправки (если указан)
+        $passengerIds = $request->input('passenger_ids', []);
+        $customMessage = $request->input('custom_message');
+
         DB::beginTransaction();
         try {
-            // Получаем всех пассажиров для выбранных рейсов
-            $passengers = Passenger::whereIn('trip_id', $task->trip_ids)
-                ->with('trip.route.departureStation', 'trip.route.arrivalStation')
-                ->get()
+            // Получаем пассажиров для выбранных рейсов
+            $passengersQuery = Passenger::whereIn('trip_id', $task->trip_ids)
+                ->with('trip.route.departureStation', 'trip.route.arrivalStation');
+
+            // Фильтруем по выбранным ID, если указаны
+            if (!empty($passengerIds)) {
+                $passengersQuery->whereIn('id', $passengerIds);
+            }
+
+            $passengers = $passengersQuery->get()
                 ->filter(fn($p) => $p->canReceiveNotifications());
 
             $template = $task->template;
 
             // Создаем уведомления для каждого пассажира
             foreach ($passengers as $passenger) {
+                $trip = $passenger->trip;
+                
                 // Определяем текст сообщения
                 if ($template) {
-                    $variables = MessageTemplate::getVariablesForPassenger($passenger, $passenger->trip);
+                    $variables = MessageTemplate::getVariablesForPassenger($passenger, $trip);
                     $renderedMessage = $template->render($variables);
                     $subject = $renderedMessage['subject'];
                     $message = $renderedMessage['body'];
                 } else {
                     $subject = 'Уведомление о рейсе';
-                    $message = $task->custom_message;
+                    $message = $customMessage ?? $task->custom_message;
                 }
+
+                // Замена простых переменных {РЕЙС}, {ДАТА}, {ВРЕМЯ}
+                $message = $this->replaceSimpleVariables($message, $trip);
 
                 // Email уведомление
                 if ($passenger->hasEmail()) {
@@ -314,6 +410,40 @@ class NotificationTaskController extends Controller
                 'message' => 'Failed to queue notifications: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Заменить простые переменные {РЕЙС}, {ДАТА}, {ВРЕМЯ} в сообщении
+     */
+    protected function replaceSimpleVariables(string $message, Trip $trip): string
+    {
+        // Получаем данные о рейсе
+        $tripNumber = $trip->trip_number ?? 'N/A';
+        
+        // Формат даты: 31.10.25
+        $date = $trip->departure_time ? $trip->departure_time->format('d.m.y') : 'N/A';
+        
+        // Формат времени: 12:00
+        $time = $trip->departure_time ? $trip->departure_time->format('H:i') : 'N/A';
+        
+        // Формируем строку рейса: "№ 510 Южно-Сахалинск-Макаров"
+        $routeInfo = '';
+        if ($trip->route) {
+            $from = $trip->route->departureStation->name ?? 'N/A';
+            $to = $trip->route->arrivalStation->name ?? 'N/A';
+            $routeInfo = "№ {$tripNumber} {$from}-{$to}";
+        } else {
+            $routeInfo = "№ {$tripNumber}";
+        }
+
+        // Замена переменных
+        $replacements = [
+            '{РЕЙС}' => $routeInfo,
+            '{ДАТА}' => $date,
+            '{ВРЕМЯ}' => $time,
+        ];
+
+        return str_replace(array_keys($replacements), array_values($replacements), $message);
     }
 
     /**

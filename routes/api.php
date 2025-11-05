@@ -56,7 +56,9 @@ Route::middleware(['auth:web'])->group(function () {
         Route::get('/', 'App\Http\Controllers\Api\NotificationTaskController@index');
         Route::post('/', 'App\Http\Controllers\Api\NotificationTaskController@store');
         Route::get('/{id}', 'App\Http\Controllers\Api\NotificationTaskController@show');
+        Route::put('/{id}/add-races', 'App\Http\Controllers\Api\NotificationTaskController@addRaces');
         Route::post('/{id}/load-passengers', 'App\Http\Controllers\Api\NotificationTaskController@loadPassengers');
+        Route::get('/{id}/passengers', 'App\Http\Controllers\Api\NotificationTaskController@getPassengers');
         Route::post('/{id}/send', 'App\Http\Controllers\Api\NotificationTaskController@send');
         Route::get('/{id}/status', 'App\Http\Controllers\Api\NotificationTaskController@getStatus');
     });

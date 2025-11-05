@@ -39,36 +39,42 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        // Создаем станции
-        $smirnykh = Station::create([
+        // Создаем станции (или обновляем, если уже существуют)
+        $smirnykh = Station::updateOrCreate(
+            ['code' => 'SMR'], // Ищем по уникальному коду
+            [
             'name' => 'Смирных',
-            'code' => 'SMR',
             'city' => 'Смирных',
             'region' => 'Сахалинская область',
             'latitude' => 49.7739,
             'longitude' => 142.8442,
             'is_active' => true,
-        ]);
+            ]
+        );
 
-        $yuzhno = Station::create([
+        $yuzhno = Station::updateOrCreate(
+            ['code' => 'YSK'],
+            [
             'name' => 'Южно-Сахалинск',
-            'code' => 'YSK',
             'city' => 'Южно-Сахалинск',
             'region' => 'Сахалинская область',
             'latitude' => 46.9590,
             'longitude' => 142.7386,
             'is_active' => true,
-        ]);
+            ]
+        );
 
-        $korsakov = Station::create([
+        $korsakov = Station::updateOrCreate(
+            ['code' => 'KRS'],
+            [
             'name' => 'Корсаков',
-            'code' => 'KRS',
             'city' => 'Корсаков',
             'region' => 'Сахалинская область',
             'latitude' => 46.6348,
             'longitude' => 142.7739,
             'is_active' => true,
-        ]);
+            ]
+        );
 
         // Создаем маршруты
         $route1 = Route::create([

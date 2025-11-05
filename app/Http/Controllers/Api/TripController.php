@@ -78,16 +78,54 @@ class TripController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            $errorMessage = $e->getMessage();
+            
+            // Определяем HTTP статус код на основе типа ошибки
+            $httpStatus = 500;
+            
+            // Если ошибка содержит информацию о 4xx статусе, используем соответствующий код
+            if (strpos($errorMessage, 'HTTP 400') !== false) {
+                $httpStatus = 400;
+            } elseif (strpos($errorMessage, 'HTTP 401') !== false) {
+                $httpStatus = 401;
+            } elseif (strpos($errorMessage, 'HTTP 403') !== false) {
+                $httpStatus = 403;
+            } elseif (strpos($errorMessage, 'HTTP 404') !== false) {
+                $httpStatus = 404;
+            } elseif (strpos($errorMessage, 'HTTP 422') !== false) {
+                $httpStatus = 422;
+            } elseif (strpos($errorMessage, 'HTTP 429') !== false) {
+                $httpStatus = 429;
+            }
+
             Log::error("Failed to get cancelled races", [
-                'request' => $request->all(),
-                'error' => $e->getMessage(),
+                'request' => [
+                    'from' => $request->input('from'),
+                    'to' => $request->input('to'),
+                    'date' => $request->input('date'),
+                ],
+                'error' => $errorMessage,
+                'http_status' => $httpStatus,
                 'trace' => $e->getTraceAsString(),
             ]);
 
+            // Формируем понятное сообщение для пользователя
+            $userMessage = $errorMessage;
+            
+            // Улучшаем сообщения для типичных случаев
+            if (strpos($errorMessage, 'API key is not configured') !== false) {
+                $userMessage = 'API ключ не настроен. Пожалуйста, настройте CARRIER_API_KEY в админ-панели или .env файле.';
+            } elseif (strpos($errorMessage, 'API URL is not configured') !== false) {
+                $userMessage = 'URL API не настроен. Пожалуйста, настройте CARRIER_API_URL в админ-панели или .env файле.';
+            } elseif (strpos($errorMessage, 'Не удалось подключиться') !== false) {
+                $userMessage = $errorMessage . ' Проверьте, что сервер API доступен и настройки сети корректны.';
+            }
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to get cancelled races: ' . $e->getMessage(),
-            ], 500);
+                'message' => $userMessage,
+                'error_code' => $httpStatus,
+            ], $httpStatus);
         }
     }
 

@@ -78,73 +78,218 @@ class CarrierApiService
     }
 
     /**
-     * Выполнить HTTP запрос с обработкой ошибок
+     * Выполнить HTTP запрос с обработкой ошибок и retry механизмом
+     * 
+     * @param string $method HTTP метод
+     * @param string $endpoint Endpoint API
+     * @param array $params Параметры запроса
+     * @param int $maxRetries Максимальное количество повторов для временных ошибок
+     * @return array
+     * @throws \Exception
      */
-    protected function makeRequest(string $method, string $endpoint, array $params = []): array
+    protected function makeRequest(string $method, string $endpoint, array $params = [], int $maxRetries = 2): array
     {
-        try {
-            $url = rtrim($this->apiUrl, '/') . '/' . ltrim($endpoint, '/');
-            
-            $request = Http::withHeaders($this->getHeaders())
-                ->timeout($this->timeout);
+        $url = rtrim($this->apiUrl, '/') . '/' . ltrim($endpoint, '/');
+        $attempt = 0;
+        
+        while ($attempt <= $maxRetries) {
+            try {
+                // Логируем запрос (без секретных данных)
+                Log::info("Carrier API request", [
+                    'method' => $method,
+                    'endpoint' => $endpoint,
+                    'url' => $url,
+                    'params' => $this->sanitizeParams($params),
+                    'attempt' => $attempt + 1,
+                ]);
 
-            switch (strtoupper($method)) {
-                case 'GET':
-                    $response = $request->get($url, $params);
-                    break;
-                case 'POST':
-                    $response = $request->post($url, $params);
-                    break;
-                case 'PUT':
-                    $response = $request->put($url, $params);
-                    break;
-                case 'DELETE':
-                    $response = $request->delete($url, $params);
-                    break;
-                default:
-                    throw new \Exception("Unsupported HTTP method: {$method}");
-            }
+                // Проверяем наличие обязательных данных
+                if (empty($this->apiKey)) {
+                    throw new \Exception("API key is not configured. Please set CARRIER_API_KEY in .env or admin settings.");
+                }
 
-            if (!$response->successful()) {
+                if (empty($this->apiUrl)) {
+                    throw new \Exception("API URL is not configured. Please set CARRIER_API_URL in .env or admin settings.");
+                }
+                
+                $request = Http::withHeaders($this->getHeaders())
+                    ->timeout($this->timeout)
+                    ->retry(2, 100); // 2 попытки с задержкой 100ms для временных ошибок
+
+                switch (strtoupper($method)) {
+                    case 'GET':
+                        $response = $request->get($url, $params);
+                        break;
+                    case 'POST':
+                        $response = $request->post($url, $params);
+                        break;
+                    case 'PUT':
+                        $response = $request->put($url, $params);
+                        break;
+                    case 'DELETE':
+                        $response = $request->delete($url, $params);
+                        break;
+                    default:
+                        throw new \Exception("Unsupported HTTP method: {$method}");
+                }
+
+                // Обработка различных статус кодов
+                if ($response->successful()) {
+                    $responseData = $response->json();
+                    
+                    // Валидация ответа
+                    if ($responseData === null) {
+                        Log::warning("Carrier API returned invalid JSON", [
+                            'url' => $url,
+                            'response_body' => $response->body(),
+                        ]);
+                        throw new \Exception("Invalid JSON response from API");
+                    }
+                    
+                    // Поддерживаем различные форматы ответов
+                    $result = $responseData['data'] 
+                        ?? $responseData['result'] 
+                        ?? $responseData 
+                        ?? [];
+                    
+                    Log::info("Carrier API request successful", [
+                        'endpoint' => $endpoint,
+                        'response_count' => is_array($result) ? count($result) : 1,
+                    ]);
+                    
+                    return $result;
+                }
+
+                // Обработка ошибок по статус кодам
                 $statusCode = $response->status();
                 $errorBody = $response->body();
+                $errorJson = $response->json();
+                
+                $errorMessage = $this->getErrorMessage($statusCode, $errorBody, $errorJson);
                 
                 Log::error("Carrier API request failed", [
                     'method' => $method,
                     'url' => $url,
+                    'params' => $this->sanitizeParams($params),
                     'status' => $statusCode,
-                    'response' => $errorBody,
+                    'response_body' => $errorBody,
+                    'attempt' => $attempt + 1,
                 ]);
 
-                throw new \Exception(
-                    "API request failed with status {$statusCode}: {$errorBody}"
-                );
+                // Для временных ошибок (5xx) - повторяем попытку
+                if ($statusCode >= 500 && $statusCode < 600 && $attempt < $maxRetries) {
+                    $delay = (int) pow(2, $attempt) * 100; // Exponential backoff: 100ms, 200ms, 400ms
+                    Log::warning("Temporary error, retrying...", [
+                        'attempt' => $attempt + 1,
+                        'delay_ms' => $delay,
+                    ]);
+                    usleep($delay * 1000); // Задержка в микросекундах
+                    $attempt++;
+                    continue;
+                }
+
+                // Для клиентских ошибок (4xx) - не повторяем
+                throw new \Exception($errorMessage);
+
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                // Ошибка подключения - повторяем для временных сетевых проблем
+                if ($attempt < $maxRetries) {
+                    $delay = (int) pow(2, $attempt) * 100;
+                    Log::warning("Connection error, retrying...", [
+                        'attempt' => $attempt + 1,
+                        'delay_ms' => $delay,
+                        'error' => $e->getMessage(),
+                    ]);
+                    usleep($delay * 1000);
+                    $attempt++;
+                    continue;
+                }
+                
+                Log::error("Carrier API connection error", [
+                    'endpoint' => $endpoint,
+                    'url' => $url,
+                    'error' => $e->getMessage(),
+                    'attempts' => $attempt + 1,
+                ]);
+                
+                throw new \Exception("Не удалось подключиться к API перевозчика. Проверьте доступность сервера и настройки сети.");
+                
+            } catch (\Illuminate\Http\Client\RequestException $e) {
+                // Ошибка запроса
+                Log::error("Carrier API request exception", [
+                    'endpoint' => $endpoint,
+                    'error' => $e->getMessage(),
+                    'attempt' => $attempt + 1,
+                ]);
+                throw new \Exception("Ошибка запроса к API перевозчика: " . $e->getMessage());
+                
+            } catch (\Exception $e) {
+                Log::error("Carrier API unexpected error", [
+                    'endpoint' => $endpoint,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+                throw $e;
             }
-
-            $responseData = $response->json();
-            
-            // Поддерживаем различные форматы ответов
-            // Формат 1: {"data": [...]}
-            // Формат 2: [...] (прямой массив)
-            // Формат 3: {"result": [...]}
-            return $responseData['data'] 
-                ?? $responseData['result'] 
-                ?? $responseData 
-                ?? [];
-
-        } catch (\Illuminate\Http\Client\ConnectionException $e) {
-            Log::error("Carrier API connection error", [
-                'endpoint' => $endpoint,
-                'error' => $e->getMessage(),
-            ]);
-            throw new \Exception("Failed to connect to carrier API: " . $e->getMessage());
-        } catch (\Exception $e) {
-            Log::error("Carrier API request error", [
-                'endpoint' => $endpoint,
-                'error' => $e->getMessage(),
-            ]);
-            throw $e;
         }
+
+        // Если дошли сюда - все попытки исчерпаны
+        throw new \Exception("Не удалось выполнить запрос к API перевозчика после " . ($maxRetries + 1) . " попыток");
+    }
+
+    /**
+     * Получить понятное сообщение об ошибке на основе статус кода
+     */
+    protected function getErrorMessage(int $statusCode, string $errorBody, ?array $errorJson): string
+    {
+        $defaultMessage = "API вернул ошибку (HTTP {$statusCode})";
+        
+        // Пытаемся извлечь сообщение из JSON ответа
+        if ($errorJson && isset($errorJson['message'])) {
+            return $errorJson['message'];
+        }
+        
+        if ($errorJson && isset($errorJson['error'])) {
+            return is_string($errorJson['error']) ? $errorJson['error'] : $defaultMessage;
+        }
+
+        // Специфичные сообщения для разных статус кодов
+        switch ($statusCode) {
+            case 400:
+                return "Некорректный запрос (HTTP 400). Проверьте правильность параметров: станции и дата.";
+            case 401:
+                return "Не авторизован (HTTP 401). Проверьте правильность API ключа (CARRIER_API_KEY).";
+            case 403:
+                return "Доступ запрещен (HTTP 403). Проверьте права доступа API ключа.";
+            case 404:
+                return "Ресурс не найден (HTTP 404). Проверьте правильность URL API и endpoint.";
+            case 422:
+                return "Ошибка валидации (HTTP 422). Проверьте формат данных запроса.";
+            case 429:
+                return "Превышен лимит запросов (HTTP 429). Попробуйте позже.";
+            case 500:
+                return "Внутренняя ошибка сервера API (HTTP 500). Попробуйте позже или обратитесь к администратору API.";
+            case 502:
+            case 503:
+            case 504:
+                return "Сервис API временно недоступен (HTTP {$statusCode}). Попробуйте позже.";
+            default:
+                // Пытаемся извлечь полезную информацию из тела ответа
+                if (strlen($errorBody) < 500) {
+                    return "Ошибка API (HTTP {$statusCode}): " . substr($errorBody, 0, 200);
+                }
+                return $defaultMessage;
+        }
+    }
+
+    /**
+     * Очистить параметры от чувствительных данных для логирования
+     */
+    protected function sanitizeParams(array $params): array
+    {
+        $sanitized = $params;
+        // Можно добавить маскирование чувствительных параметров при необходимости
+        return $sanitized;
     }
 
     /**
@@ -237,16 +382,52 @@ class CarrierApiService
      * @param int $toStationId ID станции прибытия (external_id)
      * @param string $date Дата в формате Y-m-d (например: 2025-10-31)
      * @return array Массив рейсов
+     * @throws \Exception
      */
     public function getRaces(int $fromStationId, int $toStationId, string $date): array
     {
-        $formattedDate = $this->formatDateForApi($date);
+        // Валидация входных параметров
+        if ($fromStationId <= 0) {
+            throw new \Exception("Некорректный ID станции отправления: {$fromStationId}");
+        }
+        
+        if ($toStationId <= 0) {
+            throw new \Exception("Некорректный ID станции прибытия: {$toStationId}");
+        }
+        
+        if ($fromStationId === $toStationId) {
+            throw new \Exception("Станция отправления и прибытия не могут совпадать");
+        }
+        
+        // Валидация и форматирование даты
+        try {
+            $carbon = \Carbon\Carbon::parse($date);
+            $formattedDate = $carbon->format('d.m.y'); // DD.MM.YY
+        } catch (\Exception $e) {
+            throw new \Exception("Некорректный формат даты: {$date}. Ожидается формат Y-m-d (например: 2025-10-31)");
+        }
+        
+        Log::info("Getting races from carrier API", [
+            'from_station_id' => $fromStationId,
+            'to_station_id' => $toStationId,
+            'date' => $date,
+            'formatted_date' => $formattedDate,
+        ]);
         
         $races = $this->makeRequest('GET', '/races', [
             'from' => $fromStationId,
             'to' => $toStationId,
             'date' => $formattedDate,
         ]);
+
+        // Валидация ответа
+        if (!is_array($races)) {
+            Log::warning("Unexpected response format from races API", [
+                'response_type' => gettype($races),
+                'response' => $races,
+            ]);
+            return [];
+        }
 
         // Возвращаем все рейсы (фильтрация по active=false будет в контроллере)
         return $races;
