@@ -21,14 +21,15 @@ class CarrierApiService
 
     public function __construct()
     {
-        // Берем настройки из БД в первую очередь, затем из config как fallback
-        $this->apiUrl = $this->getSetting('url', config('services.carrier_api.url', 'http://rc.rfbus.ru:8086'));
-        $this->apiKey = $this->getSetting('key', config('services.carrier_api.key', ''));
-        $this->timeout = (int) ($this->getSetting('timeout', config('services.carrier_api.timeout', 30)));
+        // Берем настройки ТОЛЬКО из БД, без fallback на config/env
+        $this->apiUrl = $this->getSetting('url');
+        $this->apiKey = $this->getSetting('key');
+        $this->timeout = (int) ($this->getSetting('timeout', 60)); // По умолчанию 60 секунд для больших запросов
     }
 
     /**
-     * Получить настройку из БД или config
+     * Получить настройку из БД
+     * @throws \Exception если настройка обязательна и не найдена
      */
     protected function getSetting(string $key, $default = null)
     {
@@ -37,7 +38,10 @@ class CarrierApiService
             $setting = \App\Models\Setting::get($fullKey);
             return $setting !== null ? $setting : $default;
         } catch (\Exception $e) {
-            // Если таблица settings еще не создана, используем config
+            Log::warning("Failed to get carrier API setting from DB", [
+                'key' => $fullKey,
+                'error' => $e->getMessage(),
+            ]);
             return $default;
         }
     }
@@ -110,8 +114,10 @@ class CarrierApiService
                     throw new \Exception("API URL не настроен. Пожалуйста, настройте API URL в админ-панели (раздел 'API Перевозчика').");
                 }
                 
+                // Настраиваем HTTP клиент с правильными параметрами
                 $request = Http::withHeaders($this->getHeaders())
-                    ->timeout($this->timeout)
+                    ->timeout($this->timeout) // Таймаут из настроек БД
+                    ->connectTimeout(10) // Таймаут подключения 10 секунд
                     ->retry(2, 100); // 2 попытки с задержкой 100ms для временных ошибок
 
                 switch (strtoupper($method)) {
@@ -137,22 +143,51 @@ class CarrierApiService
                     
                     // Валидация ответа
                     if ($responseData === null) {
+                        // Попробуем получить как текст, если JSON не валиден
+                        $body = $response->body();
                         Log::warning("Carrier API returned invalid JSON", [
                             'url' => $url,
-                            'response_body' => $response->body(),
+                            'response_body' => substr($body, 0, 500), // Первые 500 символов
+                            'status' => $response->status(),
                         ]);
-                        throw new \Exception("Invalid JSON response from API");
+                        
+                        // Если тело пустое, возвращаем пустой массив
+                        if (empty(trim($body))) {
+                            return [];
+                        }
+                        
+                        throw new \Exception("Неверный формат ответа от API перевозчика. Ожидается JSON.");
                     }
                     
                     // Поддерживаем различные форматы ответов
-                    $result = $responseData['data'] 
-                        ?? $responseData['result'] 
-                        ?? $responseData 
-                        ?? [];
+                    // API может вернуть массив напрямую или объект с полем data/result
+                    if (is_array($responseData)) {
+                        // Если это массив, проверяем наличие ключей data или result
+                        if (isset($responseData['data']) && is_array($responseData['data'])) {
+                            $result = $responseData['data'];
+                        } elseif (isset($responseData['result']) && is_array($responseData['result'])) {
+                            $result = $responseData['result'];
+                        } elseif (isset($responseData[0]) || empty($responseData)) {
+                            // Если массив начинается с 0 или пустой, это уже список
+                            $result = $responseData;
+                        } else {
+                            // Если это ассоциативный массив без data/result, возвращаем как есть
+                            $result = $responseData;
+                        }
+                    } else {
+                        // Если не массив, пытаемся извлечь данные
+                        $result = $responseData['data'] ?? $responseData['result'] ?? [];
+                    }
+                    
+                    // Убеждаемся, что результат - массив
+                    if (!is_array($result)) {
+                        $result = [];
+                    }
                     
                     Log::info("Carrier API request successful", [
                         'endpoint' => $endpoint,
-                        'response_count' => is_array($result) ? count($result) : 1,
+                        'response_count' => count($result),
+                        'response_type' => gettype($responseData),
                     ]);
                     
                     return $result;
@@ -311,11 +346,22 @@ class CarrierApiService
     /**
      * Синхронизировать станции с API
      * Сохраняет станции с external_id (ID из внешнего API)
+     * Использует увеличенный таймаут для больших запросов
      */
     public function syncStations(): int
     {
-        $stations = $this->getStations();
-        $syncedCount = 0;
+        // Временно увеличиваем таймаут для синхронизации станций (может быть много данных)
+        $originalTimeout = $this->timeout;
+        $this->timeout = max($this->timeout, 120); // Минимум 120 секунд для синхронизации
+        
+        try {
+            Log::info("Starting stations synchronization", [
+                'api_url' => $this->apiUrl,
+                'timeout' => $this->timeout,
+            ]);
+            
+            $stations = $this->getStations();
+            $syncedCount = 0;
 
         foreach ($stations as $stationData) {
             // Получаем external_id из ответа API (это ID станции из внешнего API)
@@ -368,8 +414,13 @@ class CarrierApiService
         }
 
         Log::info("Synced {$syncedCount} stations from carrier API");
-
+        
         return $syncedCount;
+        
+        } finally {
+            // Восстанавливаем оригинальный таймаут
+            $this->timeout = $originalTimeout;
+        }
     }
 
     /**

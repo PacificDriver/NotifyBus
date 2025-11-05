@@ -49,17 +49,9 @@ class SettingsController extends Controller
      */
     protected function checkCarrierApiStatus(): array
     {
-        // Берем из БД в первую очередь
+        // Берем ТОЛЬКО из БД, без fallback на config/env
         $apiKey = $this->getSettingValue('carrier_api', 'key');
         $apiUrl = $this->getSettingValue('carrier_api', 'url');
-        
-        // Fallback на config если в БД нет
-        if (empty($apiKey)) {
-            $apiKey = config('services.carrier_api.key');
-        }
-        if (empty($apiUrl)) {
-            $apiUrl = config('services.carrier_api.url');
-        }
         
         $isConfigured = !empty($apiKey) && !empty($apiUrl);
         
@@ -331,17 +323,9 @@ class SettingsController extends Controller
                 $testUrl = $this->getSettingValue('carrier_api', 'url');
             }
             
-            // Fallback на config если в БД нет
-            if (empty($testUrl)) {
-                $testUrl = config('services.carrier_api.url');
-            }
-            if (empty($testKey)) {
-                $testKey = config('services.carrier_api.key');
-            }
-            
-            // Проверяем, что есть URL и ключ
+            // Проверяем, что есть URL и ключ (только из БД, без fallback)
             if (empty($testUrl) || empty($testKey)) {
-                throw new \Exception('URL API и ключ доступа обязательны для проверки подключения. Пожалуйста, настройте их в разделе "API Перевозчика".');
+                throw new \Exception('URL API и ключ доступа обязательны для проверки подключения. Пожалуйста, настройте их в разделе "API Перевозчика" выше.');
             }
             
             Log::info('Testing Carrier API connection', [
@@ -350,13 +334,15 @@ class SettingsController extends Controller
                 'key_length' => strlen($testKey),
             ]);
             
-            // Выполняем тестовый запрос напрямую
-            $response = \Illuminate\Support\Facades\Http::timeout(15)
+            // Выполняем тестовый запрос напрямую с правильными настройками
+            $response = \Illuminate\Support\Facades\Http::timeout(30)
+                ->connectTimeout(10)
                 ->withHeaders([
                     'x-access-token' => $testKey,
                     'Accept' => 'application/json',
+                    'Content-Type' => 'application/json',
                 ])
-                ->get($testUrl . '/stations');
+                ->get(rtrim($testUrl, '/') . '/stations');
             
             Log::info('Carrier API test response', [
                 'status' => $response->status(),
@@ -379,11 +365,18 @@ class SettingsController extends Controller
                 throw new \Exception($errorMsg);
             }
             
-            $data = $response->json();
-            $stationsCount = is_array($data) ? count($data) : 0;
+            $responseData = $response->json();
+            
+            // API может вернуть массив напрямую или объект с полем data
+            $stationsData = is_array($responseData) 
+                ? ($responseData['data'] ?? $responseData) 
+                : [];
+            
+            $stationsCount = is_array($stationsData) ? count($stationsData) : 0;
             
             Log::info('Carrier API test successful', [
                 'stations_count' => $stationsCount,
+                'response_type' => gettype($responseData),
             ]);
 
             return response()->json([

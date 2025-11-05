@@ -17,10 +17,12 @@ return [
         'webhook_secret' => env('WHATSAPP_WEBHOOK_SECRET'), // Секретный ключ для верификации webhook
     ],
 
+    // Carrier API настройки теперь хранятся в базе данных (таблица settings)
+    // Эти значения больше не используются, но оставлены для обратной совместимости
     'carrier_api' => [
-        'url' => env('CARRIER_API_URL', 'http://rc.rfbus.ru:8086'),
-        'key' => env('CARRIER_API_KEY'), // x-access-token для API Сахалинского перевозчика
-        'timeout' => env('CARRIER_API_TIMEOUT', 30),
+        'url' => env('CARRIER_API_URL', 'http://rc.rfbus.ru:8086'), // УСТАРЕЛО: Используйте настройки из БД
+        'key' => env('CARRIER_API_KEY'), // УСТАРЕЛО: Используйте настройки из БД
+        'timeout' => env('CARRIER_API_TIMEOUT', 30), // УСТАРЕЛО: Используйте настройки из БД
     ],
 
     'notification' => [

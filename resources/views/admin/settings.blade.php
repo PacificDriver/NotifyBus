@@ -779,14 +779,14 @@
             
             button.disabled = true;
             button.textContent = '⏳ Синхронизация...';
-            resultDiv.innerHTML = '<div class="alert alert-info">⏳ Синхронизация станций с API перевозчика...<br><small>Это может занять до 30 секунд</small></div>';
+            resultDiv.innerHTML = '<div class="alert alert-info">⏳ Синхронизация станций с API перевозчика...<br><small>Это может занять до 3 минут</small></div>';
             
             console.log('Starting stations sync...');
             
             try {
-                // Создаём AbortController для таймаута (45 секунд)
+                // Создаём AbortController для таймаута (180 секунд = 3 минуты)
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 45000);
+                const timeoutId = setTimeout(() => controller.abort(), 180000);
                 
                 const response = await fetch(`${API_BASE}/stations/sync`, {
                     method: 'POST',
@@ -826,22 +826,23 @@
                 let errorMessage = error.message;
                 
                 if (error.name === 'AbortError') {
-                    errorMessage = 'Превышен лимит времени ожидания (45 сек).<br><br>' +
+                    errorMessage = 'Превышен лимит времени ожидания (3 минуты).<br><br>' +
                                    '<strong>Возможные причины:</strong><br>' +
-                                   '• Неверный ключ API (проверьте CARRIER_API_KEY в .env)<br>' +
+                                   '• Неверный ключ API (проверьте настройки в разделе "API Перевозчика")<br>' +
                                    '• API перевозчика недоступен<br>' +
-                                   '• Проблемы с сетевым подключением<br><br>' +
+                                   '• Проблемы с сетевым подключением<br>' +
+                                   '• Слишком много станций для загрузки<br><br>' +
                                    '<strong>Решение:</strong><br>' +
                                    '1. Проверьте логи Laravel: <code>tail -f storage/logs/laravel.log</code><br>' +
                                    '2. Проверьте настройки API в разделе "API Перевозчика" выше<br>' +
-                                   '3. Нажмите "Проверить подключение" для диагностики';
+                                   '3. Убедитесь, что URL и ключ API настроены правильно<br>' +
+                                   '4. Нажмите "Проверить подключение" для диагностики';
                 } else if (error.message.includes('403') || error.message.includes('Доступ запрещён')) {
                     errorMessage = 'Доступ запрещён. Убедитесь, что вы вошли как администратор.';
                 } else if (error.message.includes('401') || error.message.includes('Не авторизован')) {
                     errorMessage = 'Сессия истекла. Пожалуйста, войдите в систему заново.';
-                } else if (error.message.includes('ключ') || error.message.includes('x-access-token')) {
-                    errorMessage += '<br><br><strong>💡 Совет:</strong> Обновите ключ API в .env файле и выполните:<br>' +
-                                    '<code>php artisan config:clear && php artisan cache:clear</code>';
+                } else if (error.message.includes('ключ') || error.message.includes('x-access-token') || error.message.includes('не настроен')) {
+                    errorMessage += '<br><br><strong>💡 Совет:</strong> Проверьте настройки API в разделе "API Перевозчика" выше. Убедитесь, что URL и ключ доступа указаны правильно.';
                 }
                 
                 resultDiv.innerHTML = `<div class="alert alert-error">⚠️ Ошибка синхронизации станций:<br><br>${errorMessage}</div>`;

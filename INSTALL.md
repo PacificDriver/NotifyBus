@@ -111,7 +111,9 @@ WHATSAPP_PROFILE_ID=your_profile_id
 WHATSAPP_WEBHOOK_SECRET=your_webhook_secret
 
 # API Перевозчика
-CARRIER_API_KEY=your_api_key
+# ВНИМАНИЕ: Настройки API перевозчика теперь настраиваются через админ-панель
+# Перейдите в раздел "Настройки" → "API Перевозчика" после первого входа
+# CARRIER_API_KEY=your_api_key (больше не используется)
 ```
 
 Подробнее о всех переменных окружения см. `ENV_SETUP.md`
