@@ -10,6 +10,7 @@ class Station extends Model
     use HasFactory;
 
     protected $fillable = [
+        'external_id',
         'name',
         'code',
         'city',

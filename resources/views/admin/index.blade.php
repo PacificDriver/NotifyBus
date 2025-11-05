@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Панель администратора</title>
     <style>
         * {
@@ -90,6 +91,15 @@
             background: #5f3a82;
         }
         
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        
         .status-indicator {
             display: inline-block;
             width: 12px;
@@ -166,7 +176,7 @@
         
         <div class="card">
             <h2>Статус сервисов</h2>
-            <div style="padding: 20px;">
+            <div style="padding: 20px;" id="services-status">
                 <div style="margin-bottom: 15px;">
                     <span class="status-indicator status-ok"></span>
                     <strong>База данных:</strong> Подключена
@@ -175,26 +185,106 @@
                     <span class="status-indicator status-ok"></span>
                     <strong>Redis:</strong> Активен
                 </div>
-                <div style="margin-bottom: 15px;">
+                <div style="margin-bottom: 15px;" id="whatsapp-status">
                     <span class="status-indicator status-error"></span>
-                    <strong>WhatsApp API:</strong> Не настроен (требуется конфигурация)
+                    <strong>WhatsApp API:</strong> Проверка...
                 </div>
-                <div style="margin-bottom: 15px;">
+                <div style="margin-bottom: 15px;" id="carrier-status">
                     <span class="status-indicator status-error"></span>
-                    <strong>API Перевозчика:</strong> Не настроен (требуется конфигурация)
+                    <strong>API Перевозчика:</strong> Проверка...
                 </div>
             </div>
         </div>
         
-        <div class="card">
-            <h2>Управление пользователями</h2>
-            <p style="color: #666; margin-bottom: 20px;">
-                Добавление и управление учетными записями операторов и администраторов
-            </p>
-            <button class="btn btn-primary" onclick="alert('Создание нового пользователя...')">
-                ➕ Добавить пользователя
-            </button>
-        </div>
+        <script>
+            // Проверка статуса сервисов
+            async function checkServicesStatus() {
+                try {
+                    const response = await fetch('/api/settings/status', {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'include',
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        
+                        // Обновляем статус WhatsApp
+                        const whatsappStatus = document.getElementById('whatsapp-status');
+                        if (data.data && data.data.whatsapp && data.data.whatsapp.configured) {
+                            whatsappStatus.innerHTML = '<span class="status-indicator status-ok"></span><strong>WhatsApp API:</strong> Настроен';
+                        } else {
+                            whatsappStatus.innerHTML = '<span class="status-indicator status-error"></span><strong>WhatsApp API:</strong> Не настроен (требуется конфигурация)';
+                        }
+                        
+                        // Обновляем статус Carrier API
+                        const carrierStatus = document.getElementById('carrier-status');
+                        if (data.data && data.data.carrier_api && data.data.carrier_api.configured) {
+                            carrierStatus.innerHTML = '<span class="status-indicator status-ok"></span><strong>API Перевозчика:</strong> Настроен';
+                        } else {
+                            carrierStatus.innerHTML = '<span class="status-indicator status-error"></span><strong>API Перевозчика:</strong> Не настроен (требуется конфигурация)';
+                        }
+                    } else {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                } catch (error) {
+                    console.error('Error checking services status:', error);
+                    // Обновляем статусы на ошибку
+                    const whatsappStatus = document.getElementById('whatsapp-status');
+                    const carrierStatus = document.getElementById('carrier-status');
+                    if (whatsappStatus) {
+                        whatsappStatus.innerHTML = '<span class="status-indicator status-error"></span><strong>WhatsApp API:</strong> Сервис недоступен. Обратитесь к администратору.';
+                    }
+                    if (carrierStatus) {
+                        carrierStatus.innerHTML = '<span class="status-indicator status-error"></span><strong>API Перевозчика:</strong> Сервис недоступен. Обратитесь к администратору.';
+                    }
+                }
+            }
+            
+            // Синхронизация станций
+            async function syncStations() {
+                const button = event.target;
+                const originalText = button.textContent;
+                button.disabled = true;
+                button.textContent = 'Синхронизация...';
+                
+                try {
+                    const response = await fetch('/api/stations/sync', {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'include',
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        alert(`✅ Синхронизация завершена успешно!\nСинхронизировано станций: ${data.synced_count || 0}`);
+                    } else {
+                        throw new Error(data.message || 'Неизвестная ошибка синхронизации');
+                    }
+                } catch (error) {
+                    console.error('Error syncing stations:', error);
+                    alert('⚠️ В текущий момент сервис недоступен.\n\nОшибка синхронизации станций: ' + error.message + '\n\nОбратитесь к администратору для проверки настроек API Перевозчика.');
+                } finally {
+                    button.disabled = false;
+                    button.textContent = originalText;
+                }
+            }
+            
+            // Запуск проверки статуса при загрузке страницы
+            document.addEventListener('DOMContentLoaded', checkServicesStatus);
+        </script>
     </div>
 </body>
 </html>

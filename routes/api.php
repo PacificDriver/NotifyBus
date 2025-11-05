@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Route;
 Route::post('/webhooks/wappi', 'App\Http\Controllers\Api\WebhookController@handle')
     ->middleware('verify.wappi');
 
-Route::middleware(['auth:sanctum'])->group(function () {
+Route::middleware(['auth:web'])->group(function () {
     
     // Получение информации о текущем пользователе
     Route::get('/user', function (Request $request) {
@@ -28,13 +28,19 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Рейсы
     Route::prefix('trips')->group(function () {
-        Route::get('/cancelled', 'App\Http\Controllers\Api\TripController@getCancelled');
+        Route::get('/cancelled', 'App\Http\Controllers\Api\TripController@getCancelled'); // GET /api/trips/cancelled?from={id}&to={id}&date={Y-m-d}
         Route::get('/{id}', 'App\Http\Controllers\Api\TripController@show');
+    });
+    
+    // Рейсы из API перевозчика (альтернативный endpoint)
+    Route::prefix('races')->group(function () {
+        Route::get('/', 'App\Http\Controllers\Api\TripController@getCancelled'); // GET /api/races?from={id}&to={id}&date={Y-m-d}
     });
 
     // Пассажиры
     Route::prefix('passengers')->group(function () {
         Route::get('/by-trip/{tripId}', 'App\Http\Controllers\Api\PassengerController@getByTrip');
+        Route::post('/load-by-races', 'App\Http\Controllers\Api\PassengerController@loadByRaces');
     });
 
     // Уведомления
@@ -50,7 +56,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/', 'App\Http\Controllers\Api\NotificationTaskController@index');
         Route::post('/', 'App\Http\Controllers\Api\NotificationTaskController@store');
         Route::get('/{id}', 'App\Http\Controllers\Api\NotificationTaskController@show');
+        Route::post('/{id}/load-passengers', 'App\Http\Controllers\Api\NotificationTaskController@loadPassengers');
         Route::post('/{id}/send', 'App\Http\Controllers\Api\NotificationTaskController@send');
+        Route::get('/{id}/status', 'App\Http\Controllers\Api\NotificationTaskController@getStatus');
     });
 
     // Шаблоны сообщений
@@ -64,6 +72,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Настройки (только для администратора)
     Route::prefix('settings')->middleware('role:admin')->group(function () {
         Route::get('/', 'App\Http\Controllers\Api\SettingsController@index');
+        Route::get('/status', 'App\Http\Controllers\Api\SettingsController@status');
         Route::post('/', 'App\Http\Controllers\Api\SettingsController@store');
         Route::post('/test/whatsapp', 'App\Http\Controllers\Api\SettingsController@testWhatsApp');
         Route::post('/test/email', 'App\Http\Controllers\Api\SettingsController@testEmail');

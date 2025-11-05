@@ -12,8 +12,20 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Используем веб-аутентификацию для API запросов из браузера
+        // Это позволяет использовать сессии для API запросов из браузера
+        // prepend добавляет middleware в начало цепочки, перед стандартными middleware
         $middleware->api(prepend: [
-            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
+            \Illuminate\Session\Middleware\StartSession::class,
+            \Illuminate\Cookie\Middleware\EncryptCookies::class,
+            \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
+            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+        ]);
+
+        // Исключаем API маршруты из CSRF проверки, так как они используют сессионную аутентификацию
+        // и отправляют CSRF токен в заголовке X-CSRF-TOKEN
+        $middleware->validateCsrfTokens(except: [
+            'api/*',
         ]);
 
         $middleware->alias([

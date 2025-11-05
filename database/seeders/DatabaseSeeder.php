@@ -18,22 +18,26 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Создаем пользователей
-        $admin = User::create([
-            'name' => 'Администратор',
-            'email' => 'admin@busnotifications.ru',
-            'password' => Hash::make('password'),
-            'role' => 'admin',
-            'is_active' => true,
-        ]);
+        // Создаем пользователей (если их еще нет)
+        $admin = User::updateOrCreate(
+            ['email' => 'admin@busnotifications.ru'],
+            [
+                'name' => 'Администратор',
+                'password' => Hash::make('password'),
+                'role' => 'admin',
+                'is_active' => true,
+            ]
+        );
 
-        $operator = User::create([
-            'name' => 'Оператор Иван',
-            'email' => 'operator@busnotifications.ru',
-            'password' => Hash::make('password'),
-            'role' => 'operator',
-            'is_active' => true,
-        ]);
+        $operator = User::updateOrCreate(
+            ['email' => 'operator@busnotifications.ru'],
+            [
+                'name' => 'Оператор Иван',
+                'password' => Hash::make('password'),
+                'role' => 'operator',
+                'is_active' => true,
+            ]
+        );
 
         // Создаем станции
         $smirnykh = Station::create([

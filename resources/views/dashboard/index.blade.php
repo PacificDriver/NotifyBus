@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Панель оператора</title>
     <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
@@ -212,102 +213,137 @@
     </div>
     
     <div id="app" class="container">
-        <!-- Шаг 1: Поиск отмененных рейсов -->
+        <!-- Создание задачи на рассылку -->
         <div class="card">
-            <h2>Шаг 1: Поиск отмененных рейсов</h2>
-            <div class="grid">
-                <div class="form-group">
-                    <label>Станция отправления</label>
-                    <select v-model="searchForm.departureStationId">
-                        <option value="">Выберите станцию</option>
-                        <option value="1">Смирных</option>
-                        <option value="2">Южно-Сахалинск</option>
-                    </select>
+            <h2>📨 Создать рассылку уведомлений</h2>
+            
+            <!-- Шаг 1: Поиск отмененных рейсов -->
+            <div style="margin-bottom: 30px;">
+                <h3 style="margin-bottom: 15px; color: #555;">Шаг 1: Поиск отмененных рейсов</h3>
+                <div class="grid">
+                    <div class="form-group">
+                        <label>Станция «Откуда»</label>
+                        <select v-model="searchForm.from" required>
+                            <option value="">Выберите станцию</option>
+                            <option v-for="station in stations" :key="station.id" :value="station.id">
+                                @{{ station.name }}
+                            </option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Станция «Куда»</label>
+                        <select v-model="searchForm.to" required>
+                            <option value="">Выберите станцию</option>
+                            <option v-for="station in stations" :key="station.id" :value="station.id">
+                                @{{ station.name }}
+                            </option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Дата рейса</label>
+                        <input type="date" v-model="searchForm.date" required>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Станция прибытия</label>
-                    <select v-model="searchForm.arrivalStationId">
-                        <option value="">Выберите станцию</option>
-                        <option value="1">Смирных</option>
-                        <option value="2">Южно-Сахалинск</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Дата</label>
-                    <input type="date" v-model="searchForm.date">
-                </div>
+                <button class="btn btn-primary" @click="searchCancelledRaces" :disabled="searching">
+                    <span v-if="searching">⏳ Поиск...</span>
+                    <span v-else>🔍 Найти отмененные рейсы</span>
+                </button>
             </div>
-            <button class="btn btn-primary" @click="searchTrips">🔍 Найти отмененные рейсы</button>
-        </div>
         
         <!-- Шаг 2: Выбор рейсов -->
-        <div class="card" v-if="trips.length > 0">
-            <h2>Шаг 2: Выбор рейсов для уведомления</h2>
-            <div class="grid">
-                <div v-for="trip in trips" :key="trip.id" 
+        <div class="card" v-if="races.length > 0">
+            <h3 style="margin-bottom: 15px; color: #555;">Шаг 2: Выбор отмененных рейсов</h3>
+            <p style="margin-bottom: 15px; color: #666;">Найдено отмененных рейсов: <strong>@{{ races.length }}</strong></p>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px; background: #f8f9fa; border-radius: 6px;">
+                    <input type="checkbox" @change="toggleAllRaces" :checked="selectedRaces.length === races.length && races.length > 0" style="width: 18px; height: 18px; cursor: pointer;">
+                    <strong>Выбрать все (@{{ selectedRaces.length }} из @{{ races.length }})</strong>
+                </label>
+            </div>
+            
+            <div class="grid" style="max-height: 400px; overflow-y: auto; padding: 10px;">
+                <div v-for="race in races" :key="race.id" 
                      class="trip-item" 
-                     :class="{ selected: selectedTrips.includes(trip.id) }"
-                     @click="toggleTrip(trip.id)">
-                    <strong>Рейс №@{{ trip.trip_number }}</strong>
-                    <div style="margin-top: 8px; font-size: 0.9rem; color: #666;">
-                        Время: @{{ trip.departure_time }}<br>
-                        Пассажиров: @{{ trip.passengers_count || 0 }}
+                     :class="{ selected: selectedRaces.includes(race.id) }"
+                     style="display: flex; align-items: flex-start; gap: 10px;">
+                    <input type="checkbox" 
+                           :value="race.id" 
+                           v-model="selectedRaces"
+                           style="width: 18px; height: 18px; margin-top: 2px; cursor: pointer;">
+                    <div style="flex: 1;">
+                        <strong>Рейс ID: @{{ race.id }}</strong>
+                        <div style="margin-top: 8px; font-size: 0.9rem; color: #666;">
+                            <div>Отправление: @{{ formatDateTime(race.dt_depart) }}</div>
+                            <div>Прибытие: @{{ formatDateTime(race.dt_arrive) }}</div>
+                            <div>Часовой пояс: UTC+@{{ race.route_tz || 'N/A' }}</div>
+                            <div style="margin-top: 5px;">
+                                <span class="badge badge-danger">Отменен</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-            <button class="btn btn-primary" @click="loadPassengers" :disabled="selectedTrips.length === 0">
-                📋 Загрузить пассажиров (@{{ selectedTrips.length }} рейсов)
-            </button>
-        </div>
-        
-        <!-- Шаг 3: Список пассажиров -->
-        <div class="card" v-if="passengers.length > 0">
-            <h2>Шаг 3: Список пассажиров (@{{ passengers.length }})</h2>
-            <div class="passenger-list">
-                <div v-for="passenger in passengers" :key="passenger.id" class="passenger-item">
-                    <div>
-                        <strong>@{{ passenger.full_name }}</strong><br>
-                        <span style="color: #666; font-size: 0.9rem;">
-                            @{{ passenger.email || 'Нет email' }} | @{{ passenger.phone || 'Нет телефона' }}
-                        </span>
-                    </div>
-                    <div>
-                        <span class="badge badge-success" v-if="passenger.email && passenger.phone">✓ Email + WhatsApp</span>
-                        <span class="badge badge-warning" v-else-if="passenger.email || passenger.phone">⚠ Один канал</span>
-                    </div>
-                </div>
+            
+            <div style="margin-top: 20px;">
+                <button class="btn btn-primary" @click="createTask" :disabled="selectedRaces.length === 0 || creatingTask">
+                    <span v-if="creatingTask">⏳ Создание задачи...</span>
+                    <span v-else>📝 Создать задачу на рассылку (@{{ selectedRaces.length }} рейсов)</span>
+                </button>
             </div>
         </div>
         
-        <!-- Шаг 4: Подготовка сообщения -->
-        <div class="card" v-if="passengers.length > 0">
-            <h2>Шаг 4: Подготовка сообщения</h2>
+        <div class="card" v-if="races.length === 0 && searchPerformed">
+            <p style="color: #666; text-align: center; padding: 20px;">
+                Отмененных рейсов не найдено для выбранных параметров
+            </p>
+        </div>
+        
+        <!-- Шаг 3: Загрузка пассажиров и отправка -->
+        <div class="card" v-if="currentTask">
+            <h3 style="margin-bottom: 15px; color: #555;">Шаг 3: Загрузка пассажиров и отправка</h3>
+            <p style="margin-bottom: 15px; color: #666;">
+                Задача создана: <strong>@{{ currentTask.title }}</strong><br>
+                Выбрано рейсов: <strong>@{{ selectedRaces.length }}</strong>
+            </p>
+            
             <div class="form-group">
-                <label>Выберите шаблон</label>
+                <label>Выберите шаблон сообщения</label>
                 <select v-model="notificationForm.templateId">
                     <option value="">Без шаблона (свой текст)</option>
-                    <option value="1">Уведомление об отмене рейса</option>
-                    <option value="2">Уведомление о задержке</option>
+                    <option v-for="template in templates" :key="template.id" :value="template.id">
+                        @{{ template.name }}
+                    </option>
                 </select>
             </div>
+            
             <div class="form-group">
                 <label>Текст сообщения</label>
                 <textarea v-model="notificationForm.message" rows="6" 
                           placeholder="Введите текст сообщения..."></textarea>
                 <small style="color: #666;">
-                    Доступные переменные: @{{passenger_full_name}}, @{{trip_number}}, @{{departure_time}}, @{{departure_station}}, @{{arrival_station}}
+                    Доступные переменные: {РЕЙС}, {ДАТА}, {ВРЕМЯ}, {passenger_full_name}, {trip_number}, {departure_station}, {arrival_station}
                 </small>
             </div>
-        </div>
-        
-        <!-- Шаг 5: Отправка -->
-        <div class="card" v-if="passengers.length > 0">
-            <h2>Шаг 5: Отправка уведомлений</h2>
-            <button class="btn btn-success" @click="sendNotifications">
-                ✉️ Отправить уведомления (@{{ passengers.length }} пассажиров)
-            </button>
             
-            <div class="stats" v-if="stats.total > 0">
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button class="btn btn-primary" @click="loadPassengersForTask" :disabled="loadingPassengers">
+                    <span v-if="loadingPassengers">⏳ Загрузка...</span>
+                    <span v-else>📋 Загрузить список пассажиров</span>
+                </button>
+                
+                <button class="btn btn-success" @click="sendNotifications" :disabled="!passengersLoaded || sending">
+                    <span v-if="sending">⏳ Отправка...</span>
+                    <span v-else>✉️ Отправить уведомления</span>
+                </button>
+            </div>
+            
+            <div v-if="passengersInfo.total > 0" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                <strong>Пассажиры загружены:</strong><br>
+                Всего: @{{ passengersInfo.total }} | С email: @{{ passengersInfo.withEmail }} | С телефоном: @{{ passengersInfo.withPhone }}
+            </div>
+            
+            <div class="stats" v-if="stats.total > 0" style="margin-top: 20px;">
                 <div class="stat-box">
                     <div class="number">@{{ stats.total }}</div>
                     <div class="label">Всего</div>
@@ -334,61 +370,349 @@
         createApp({
             data() {
                 return {
+                    stations: [],
                     searchForm: {
-                        departureStationId: '',
-                        arrivalStationId: '',
+                        from: '',
+                        to: '',
                         date: new Date().toISOString().split('T')[0]
                     },
-                    trips: [],
-                    selectedTrips: [],
-                    passengers: [],
+                    races: [], // Отмененные рейсы из API
+                    selectedRaces: [], // Выбранные ID рейсов
+                    searchPerformed: false,
+                    searching: false,
+                    currentTask: null,
+                    creatingTask: false,
+                    templates: [],
+                    passengersInfo: {
+                        total: 0,
+                        withEmail: 0,
+                        withPhone: 0
+                    },
+                    passengersLoaded: false,
+                    loadingPassengers: false,
+                    sending: false,
                     notificationForm: {
                         templateId: '',
-                        message: 'Уважаемый {{passenger_full_name}},\n\nСообщаем, что рейс №{{trip_number}} {{departure_station}} → {{arrival_station}}, запланированный на {{departure_time}}, был отменен.\n\nПриносим извинения за неудобства.'
+                        message: '❌ Рейс отменен. Ваш рейс {ДАТА} отправление в {ВРЕМЯ} по маршруту {РЕЙС} отменен.'
                     },
                     stats: {
                         total: 0,
                         sent: 0,
                         pending: 0,
                         failed: 0
-                    },
-                    currentTaskId: null
+                    }
                 }
             },
+            mounted() {
+                this.loadStations();
+                this.loadTemplates();
+            },
             methods: {
-                async searchTrips() {
-                    alert('Поиск отмененных рейсов...\n\nЭто демо-версия интерфейса. Для работы необходимо настроить API.');
-                    // Пример: имитация данных
-                    this.trips = [
-                        { id: 1, trip_number: '507', departure_time: '10:30', passengers_count: 15 },
-                        { id: 2, trip_number: '508', departure_time: '14:00', passengers_count: 23 }
-                    ];
-                },
-                toggleTrip(tripId) {
-                    const index = this.selectedTrips.indexOf(tripId);
-                    if (index > -1) {
-                        this.selectedTrips.splice(index, 1);
-                    } else {
-                        this.selectedTrips.push(tripId);
+                async loadStations() {
+                    try {
+                        const response = await fetch('/api/stations', {
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            credentials: 'include',
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        const data = await response.json();
+                        if (data.success && data.data) {
+                            this.stations = data.data;
+                        } else {
+                            throw new Error(data.message || 'Не удалось загрузить станции');
+                        }
+                    } catch (error) {
+                        console.error('Error loading stations:', error);
+                        alert('⚠️ В текущий момент сервис недоступен.\n\nОшибка загрузки станций. Обратитесь к администратору для проверки настроек API Перевозчика.');
+                        this.stations = [];
                     }
                 },
-                async loadPassengers() {
-                    alert('Загрузка пассажиров...');
-                    // Имитация данных
-                    this.passengers = [
-                        { id: 1, full_name: 'Иванов Иван Иванович', email: 'ivanov@example.com', phone: '+79001234567' },
-                        { id: 2, full_name: 'Петров Петр Петрович', email: 'petrov@example.com', phone: '+79001234568' }
-                    ];
+                
+                async loadTemplates() {
+                    try {
+                        const response = await fetch('/api/templates', {
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            credentials: 'include',
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        const data = await response.json();
+                        if (data.success && data.data) {
+                            this.templates = data.data.data || data.data || [];
+                        }
+                    } catch (error) {
+                        console.error('Error loading templates:', error);
+                        // Не показываем alert для шаблонов, так как это не критично
+                        this.templates = [];
+                    }
+                },
+                
+                async searchCancelledRaces() {
+                    if (!this.searchForm.from || !this.searchForm.to || !this.searchForm.date) {
+                        alert('Пожалуйста, заполните все поля: станцию отправления, станцию прибытия и дату');
+                        return;
+                    }
+                    
+                    this.searching = true;
+                    this.searchPerformed = true;
+                    this.races = [];
+                    this.selectedRaces = [];
+                    
+                    try {
+                        // Форматируем дату для API (Y-m-d)
+                        const date = new Date(this.searchForm.date);
+                        const formattedDate = date.toISOString().split('T')[0];
+                        
+                        // GET запрос: /races?from={id_from}&to={id_to}&date={DD.MM.YY}
+                        // Но API принимает date в формате Y-m-d, а затем конвертирует в DD.MM.YY
+                        const response = await fetch(`/api/races?from=${this.searchForm.from}&to=${this.searchForm.to}&date=${formattedDate}`, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            credentials: 'include',
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        const data = await response.json();
+                        
+                        if (data.success && data.data) {
+                            // API уже возвращает только отмененные рейсы (active = false)
+                            this.races = data.data;
+                            if (this.races.length === 0) {
+                                alert('Отмененных рейсов не найдено для выбранных параметров');
+                            }
+                        } else {
+                            throw new Error(data.message || 'Неизвестная ошибка при поиске рейсов');
+                        }
+                    } catch (error) {
+                        console.error('Error searching races:', error);
+                        alert('⚠️ В текущий момент сервис недоступен.\n\nОшибка подключения к API Перевозчика: ' + error.message + '\n\nОбратитесь к администратору для проверки настроек API.');
+                        this.races = [];
+                        this.searchPerformed = true;
+                    } finally {
+                        this.searching = false;
+                    }
+                },
+                
+                toggleAllRaces(event) {
+                    if (event.target.checked) {
+                        this.selectedRaces = this.races.map(race => race.id);
+                    } else {
+                        this.selectedRaces = [];
+                    }
+                },
+                
+                async createTask() {
+                    if (this.selectedRaces.length === 0) {
+                        alert('Выберите хотя бы один рейс');
+                        return;
+                    }
+                    
+                    this.creatingTask = true;
+                    
+                    try {
+                        // Получаем полные данные выбранных рейсов
+                        const racesData = this.races.filter(race => this.selectedRaces.includes(race.id));
+                        
+                        const response = await fetch('/api/notification-tasks', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            credentials: 'include',
+                            body: JSON.stringify({
+                                title: `Рассылка уведомлений - ${new Date().toLocaleDateString('ru-RU')}`,
+                                races_data: racesData,
+                                template_id: this.notificationForm.templateId || null,
+                                custom_message: this.notificationForm.message,
+                            }),
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            this.currentTask = data.data;
+                            alert(`✅ Задача создана успешно! ID: ${data.data.id}`);
+                        } else {
+                            throw new Error(data.message || 'Не удалось создать задачу');
+                        }
+                    } catch (error) {
+                        console.error('Error creating task:', error);
+                        alert('⚠️ В текущий момент сервис недоступен.\n\nОшибка при создании задачи: ' + error.message + '\n\nОбратитесь к администратору.');
+                    } finally {
+                        this.creatingTask = false;
+                    }
+                },
+                
+                async loadPassengersForTask() {
+                    if (!this.currentTask || !this.currentTask.id) {
+                        alert('Сначала создайте задачу');
+                        return;
+                    }
+                    
+                    this.loadingPassengers = true;
+                    
+                    try {
+                        const response = await fetch(`/api/notification-tasks/${this.currentTask.id}/load-passengers`, {
+                            method: 'POST',
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            credentials: 'include',
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            this.passengersInfo = {
+                                total: data.data.total_loaded || 0,
+                                withEmail: 0, // TODO: получить из ответа
+                                withPhone: 0  // TODO: получить из ответа
+                            };
+                            this.passengersLoaded = true;
+                            alert(`✅ Загружено пассажиров: ${data.data.saved_count || 0}`);
+                        } else {
+                            throw new Error(data.message || 'Не удалось загрузить пассажиров');
+                        }
+                    } catch (error) {
+                        console.error('Error loading passengers:', error);
+                        alert('⚠️ В текущий момент сервис недоступен.\n\nОшибка при загрузке пассажиров: ' + error.message + '\n\nОбратитесь к администратору для проверки настроек внешней БД.');
+                        this.passengersLoaded = false;
+                    } finally {
+                        this.loadingPassengers = false;
+                    }
+                },
+                formatDateTime(datetime) {
+                    if (!datetime) return 'N/A';
+                    try {
+                        const date = new Date(datetime);
+                        return date.toLocaleString('ru-RU', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                    } catch (e) {
+                        return datetime;
+                    }
                 },
                 async sendNotifications() {
-                    if (confirm('Отправить уведомления всем пассажирам?')) {
-                        alert('Уведомления поставлены в очередь!\n\nЭто демо-версия. В реальной системе здесь будет отправка через API.');
-                        this.stats = {
-                            total: this.passengers.length * 2,
-                            sent: 0,
-                            pending: this.passengers.length * 2,
-                            failed: 0
-                        };
+                    if (!this.currentTask || !this.currentTask.id) {
+                        alert('Сначала создайте задачу и загрузите пассажиров');
+                        return;
+                    }
+                    
+                    if (!this.passengersLoaded) {
+                        alert('Сначала загрузите список пассажиров');
+                        return;
+                    }
+                    
+                    if (!confirm(`Отправить уведомления пассажирам?`)) {
+                        return;
+                    }
+                    
+                    this.sending = true;
+                    
+                    try {
+                        const response = await fetch(`/api/notification-tasks/${this.currentTask.id}/send`, {
+                            method: 'POST',
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            credentials: 'include',
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            alert(`✅ Уведомления поставлены в очередь!\nЗадача: ${this.currentTask.id}\nПолучателей: ${data.total_recipients || 0}`);
+                            this.stats = {
+                                total: data.total_recipients || 0,
+                                sent: 0,
+                                pending: data.total_notifications || 0,
+                                failed: 0
+                            };
+                            
+                            // Периодически обновляем статистику
+                            this.updateStats(this.currentTask.id);
+                        } else {
+                            throw new Error(data.message || 'Не удалось отправить уведомления');
+                        }
+                    } catch (error) {
+                        console.error('Error sending notifications:', error);
+                        alert('⚠️ В текущий момент сервис недоступен.\n\nОшибка при отправке уведомлений: ' + error.message + '\n\nОбратитесь к администратору для проверки настроек WhatsApp и Email.');
+                    } finally {
+                        this.sending = false;
+                    }
+                },
+                
+                async updateStats(taskId) {
+                    try {
+                        const response = await fetch(`/api/notification-tasks/${taskId}/status`, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            credentials: 'include',
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        const data = await response.json();
+                        if (data.success && data.data.stats) {
+                            this.stats = {
+                                total: data.data.stats.total || 0,
+                                sent: data.data.stats.sent || 0,
+                                pending: data.data.stats.pending || 0,
+                                failed: data.data.stats.failed || 0
+                            };
+                        }
+                    } catch (error) {
+                        console.error('Error updating stats:', error);
+                        // Не показываем alert для статистики, так как это не критично
                     }
                 }
             }

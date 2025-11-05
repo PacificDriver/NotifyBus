@@ -64,9 +64,11 @@ sudo systemctl reload postgresql
 ### 3. Установка приложения (3 минуты)
 
 ```bash
-cd /var/www
-sudo git clone <your-repo-url> notiify
-cd notiify
+cd /var/www/html
+sudo git clone https://github.com/PacificDriver/NotifyBus.git NotifyBus
+cd NotifyBus
+
+# Если репозиторий приватный, см. инструкции в GIT_SETUP.md
 
 # Создание необходимых директорий (ВАЖНО!)
 sudo mkdir -p bootstrap/cache
@@ -235,9 +237,33 @@ sudo supervisorctl start notiify-worker:*
 
 Откройте в браузере: `http://your-domain.com`
 
+**Главная страница теперь является страницей входа.** Система автоматически перенаправит вас:
+- **Администратора** → в панель администратора (`/admin`)
+- **Оператора** → в панель оператора (`/dashboard`)
+
 **Учетные данные:**
 - Администратор: `admin@busnotifications.ru` / `password`
 - Оператор: `operator@busnotifications.ru` / `password`
+
+---
+
+## 📦 Обновление уже работающего сайта
+
+Если сайт уже развернут и нужно применить обновления, см. файл `DEPLOY.md` для подробных инструкций.
+
+**Быстрая команда:**
+```bash
+cd /var/www/html/NotifyBus
+git pull  # или скопируйте новые файлы
+composer install --no-dev --optimize-autoloader
+php artisan migrate
+php artisan config:clear
+php artisan cache:clear
+php artisan route:clear
+php artisan view:clear
+sudo systemctl reload php8.2-fpm
+sudo systemctl reload nginx
+```
 
 ## ⚠️ Решение распространенных проблем
 

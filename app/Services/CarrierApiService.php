@@ -21,9 +21,27 @@ class CarrierApiService
 
     public function __construct()
     {
-        $this->apiUrl = config('services.carrier_api.url');
-        $this->apiKey = config('services.carrier_api.key');
-        $this->timeout = config('services.carrier_api.timeout', 30);
+        // Сначала берем из .env, затем из БД (настройки), затем из config
+        $this->apiUrl = env('CARRIER_API_URL') 
+            ?? $this->getSetting('url', config('services.carrier_api.url', 'http://rc.rfbus.ru:8086'));
+        $this->apiKey = env('CARRIER_API_KEY') 
+            ?? $this->getSetting('key', config('services.carrier_api.key', ''));
+        $this->timeout = (int) ($this->getSetting('timeout', config('services.carrier_api.timeout', 30)));
+    }
+
+    /**
+     * Получить настройку из БД или config
+     */
+    protected function getSetting(string $key, $default = null)
+    {
+        try {
+            $fullKey = "carrier_api_{$key}";
+            $setting = \App\Models\Setting::get($fullKey);
+            return $setting !== null ? $setting : $default;
+        } catch (\Exception $e) {
+            // Если таблица settings еще не создана, используем config
+            return $default;
+        }
     }
 
     /**
@@ -40,14 +58,15 @@ class CarrierApiService
     }
 
     /**
-     * Конвертировать дату в формат API (d.m.y)
-     * Пример: 2024-11-07 -> 7.11.24
+     * Конвертировать дату в формат API (DD.MM.YY)
+     * Пример: 2024-11-07 -> 07.11.24
+     * Пример: 2025-10-31 -> 31.10.25
      */
     protected function formatDateForApi(string $date): string
     {
         try {
             $carbon = Carbon::parse($date);
-            return $carbon->format('j.n.y'); // d.m.y без ведущих нулей для дня
+            return $carbon->format('d.m.y'); // DD.MM.YY с ведущими нулями
         } catch (\Exception $e) {
             Log::warning("Failed to format date for API", [
                 'date' => $date,
@@ -130,6 +149,8 @@ class CarrierApiService
 
     /**
      * Получить список станций из API перевозчика
+     * GET http://rc.rfbus.ru:8086/stations
+     * Заголовок: x-access-token
      */
     public function getStations(): array
     {
@@ -146,6 +167,7 @@ class CarrierApiService
 
     /**
      * Синхронизировать станции с API
+     * Сохраняет станции с external_id (ID из внешнего API)
      */
     public function syncStations(): int
     {
@@ -153,38 +175,30 @@ class CarrierApiService
         $syncedCount = 0;
 
         foreach ($stations as $stationData) {
-            // API может возвращать станции в разных форматах
-            // Поддерживаем id, code, name как идентификаторы
-            $identifier = $stationData['id'] ?? $stationData['code'] ?? $stationData['name'] ?? null;
+            // Получаем external_id из ответа API (это ID станции из внешнего API)
+            $externalId = $stationData['id'] ?? $stationData['external_id'] ?? null;
             
-            if (!$identifier) {
-                Log::warning("Station without identifier skipped", [
+            if (!$externalId) {
+                Log::warning("Station without external_id skipped", [
                     'station_data' => $stationData,
                 ]);
                 continue;
             }
 
-            // Определяем ключ для поиска существующей записи
-            $searchBy = [];
-            if (isset($stationData['id'])) {
-                $searchBy['code'] = (string)$stationData['id'];
-            } elseif (isset($stationData['code'])) {
-                $searchBy['code'] = $stationData['code'];
-            } else {
-                $searchBy['name'] = $stationData['name'] ?? 'Unknown';
-            }
+            // Ищем по external_id, если не найдено - по коду
+            $searchBy = ['external_id' => (string)$externalId];
 
             Station::updateOrCreate(
                 $searchBy,
                 [
+                    'external_id' => (string)$externalId,
                     'name' => $stationData['name'] 
                         ?? $stationData['title'] 
                         ?? $stationData['station_name'] 
                         ?? 'Unknown',
-                    'code' => (string)($stationData['id'] 
-                        ?? $stationData['code'] 
-                        ?? $stationData['station_id'] 
-                        ?? ''),
+                    'code' => (string)($stationData['code'] 
+                        ?? $stationData['station_code'] 
+                        ?? $externalId),
                     'city' => $stationData['city'] 
                         ?? $stationData['city_name'] 
                         ?? $stationData['settlement'] 
@@ -217,17 +231,43 @@ class CarrierApiService
 
     /**
      * Получить список рейсов (races) на определенную дату
-     * API использует /races?from={id}&to={id}&date={d.m.y}
+     * API: GET /races?from={id_from}&to={id_to}&date={DD.MM.YY}
+     * 
+     * @param int $fromStationId ID станции отправления (external_id)
+     * @param int $toStationId ID станции прибытия (external_id)
+     * @param string $date Дата в формате Y-m-d (например: 2025-10-31)
+     * @return array Массив рейсов
      */
     public function getRaces(int $fromStationId, int $toStationId, string $date): array
     {
         $formattedDate = $this->formatDateForApi($date);
         
-        return $this->makeRequest('GET', '/races', [
+        $races = $this->makeRequest('GET', '/races', [
             'from' => $fromStationId,
             'to' => $toStationId,
             'date' => $formattedDate,
         ]);
+
+        // Возвращаем все рейсы (фильтрация по active=false будет в контроллере)
+        return $races;
+    }
+
+    /**
+     * Получить список отмененных рейсов (active = false)
+     * 
+     * @param int $fromStationId ID станции отправления (external_id)
+     * @param int $toStationId ID станции прибытия (external_id)
+     * @param string $date Дата в формате Y-m-d
+     * @return array Массив отмененных рейсов
+     */
+    public function getCancelledRaces(int $fromStationId, int $toStationId, string $date): array
+    {
+        $races = $this->getRaces($fromStationId, $toStationId, $date);
+        
+        // Фильтруем только отмененные рейсы (active = false)
+        return array_filter($races, function ($race) {
+            return isset($race['active']) && $race['active'] === false;
+        });
     }
 
     /**
@@ -253,84 +293,6 @@ class CarrierApiService
         return [];
     }
 
-    /**
-     * Получить список пассажиров для рейса
-     * TODO: Уточнить endpoint для пассажиров в реальном API
-     */
-    public function getPassengers(string $tripExternalId): array
-    {
-        // Возможно, endpoint будет /races/{id}/passengers или /races/{id}/passengers?from={id}&to={id}
-        // Пока возвращаем пустой массив, нужно уточнить у перевозчика
-        Log::warning("getPassengers() endpoint needs to be confirmed with carrier API");
-        return $this->makeRequest('GET', "/races/{$tripExternalId}/passengers");
-    }
-
-    /**
-     * Синхронизировать пассажиров для конкретного рейса
-     */
-    public function syncPassengers(Trip $trip): int
-    {
-        if (!$trip->external_id) {
-            throw new \Exception('Trip has no external_id');
-        }
-
-        $passengersData = $this->getPassengers($trip->external_id);
-        $syncedCount = 0;
-
-        foreach ($passengersData as $passengerData) {
-            Passenger::updateOrCreate(
-                [
-                    'trip_id' => $trip->id,
-                    'external_booking_id' => $passengerData['booking_id'] 
-                        ?? $passengerData['external_booking_id'] 
-                        ?? $passengerData['id'] 
-                        ?? $passengerData['ticket_id']
-                        ?? null,
-                ],
-                [
-                    'first_name' => $passengerData['first_name'] 
-                        ?? $passengerData['name'] 
-                        ?? $passengerData['fname']
-                        ?? '',
-                    'last_name' => $passengerData['last_name'] 
-                        ?? $passengerData['surname'] 
-                        ?? $passengerData['lname']
-                        ?? '',
-                    'middle_name' => $passengerData['middle_name'] 
-                        ?? $passengerData['patronymic'] 
-                        ?? $passengerData['mname']
-                        ?? null,
-                    'email' => $passengerData['email'] 
-                        ?? $passengerData['e_mail'] 
-                        ?? $passengerData['mail']
-                        ?? null,
-                    'phone' => $passengerData['phone'] 
-                        ?? $passengerData['phone_number'] 
-                        ?? $passengerData['tel']
-                        ?? null,
-                    'seat_number' => $passengerData['seat_number'] 
-                        ?? $passengerData['seat'] 
-                        ?? $passengerData['place']
-                        ?? null,
-                    'ticket_price' => $passengerData['price'] 
-                        ?? $passengerData['ticket_price'] 
-                        ?? $passengerData['cost']
-                        ?? null,
-                    'ticket_status' => $this->normalizeTicketStatus(
-                        $passengerData['status'] 
-                            ?? $passengerData['ticket_status'] 
-                            ?? 'booked'
-                    ),
-                ]
-            );
-
-            $syncedCount++;
-        }
-
-        Log::info("Synced {$syncedCount} passengers for trip {$trip->id} from carrier API");
-
-        return $syncedCount;
-    }
 
     /**
      * Нормализовать статус билета к стандартному формату

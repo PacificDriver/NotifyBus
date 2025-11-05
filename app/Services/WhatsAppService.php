@@ -21,12 +21,15 @@ class WhatsAppService
 
     public function __construct()
     {
-        // Сначала пытаемся получить из БД (настройки), если нет - из config
-        $this->apiUrl = $this->getSetting('api_url', config('services.whatsapp.api_url', 'https://api.wappi.pro'));
-        $this->apiToken = $this->getSetting('api_token', config('services.whatsapp.api_token'));
-        $this->profileId = $this->getSetting('profile_id', config('services.whatsapp.profile_id'));
-        $this->dailyLimit = (int) $this->getSetting('daily_limit', config('services.whatsapp.daily_limit', 1000));
-        $this->useAsync = (bool) $this->getSetting('use_async', config('services.whatsapp.use_async', true));
+        // Сначала берем из .env, затем из БД (настройки), затем из config
+        $this->apiUrl = env('WAPPI_API_URL') 
+            ?? $this->getSetting('api_url', config('services.whatsapp.api_url', 'https://api.wappi.pro'));
+        $this->apiToken = env('WAPPI_API_TOKEN') 
+            ?? $this->getSetting('api_token', config('services.whatsapp.api_token'));
+        $this->profileId = env('WAPPI_PROFILE_ID') 
+            ?? $this->getSetting('profile_id', config('services.whatsapp.profile_id'));
+        $this->dailyLimit = (int) ($this->getSetting('daily_limit', config('services.whatsapp.daily_limit', 1000)));
+        $this->useAsync = (bool) ($this->getSetting('use_async', config('services.whatsapp.use_async', true)));
     }
 
     /**
@@ -100,9 +103,15 @@ class WhatsAppService
         // profile_id передается как query параметр согласно документации Wappi.pro
         $url = $this->apiUrl . $endpoint . '?profile_id=' . urlencode($this->profileId);
         
+        // Wappi.pro использует Bearer token для авторизации
+        $authHeader = str_starts_with($this->apiToken, 'Bearer ') 
+            ? $this->apiToken 
+            : 'Bearer ' . $this->apiToken;
+        
         $response = Http::withHeaders([
-            'Authorization' => $this->apiToken,
+            'Authorization' => $authHeader,
             'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
         ])->post($url, [
             'to' => $to,
             'body' => $message,
@@ -112,7 +121,7 @@ class WhatsAppService
             $this->incrementDailyCounter();
             
             $responseData = $response->json();
-            $messageId = $responseData['id'] ?? $responseData['message_id'] ?? null;
+            $messageId = $responseData['id'] ?? $responseData['message_id'] ?? $responseData['data']['id'] ?? null;
 
             Log::info("WhatsApp message sent successfully (sync)", [
                 'to' => $to,
@@ -129,13 +138,24 @@ class WhatsAppService
         }
 
         $errorBody = $response->body();
+        $statusCode = $response->status();
+        
         Log::error("WhatsApp API error (sync)", [
             'to' => $to,
-            'status' => $response->status(),
+            'status' => $statusCode,
             'response' => $errorBody,
         ]);
 
-        throw new \Exception('WhatsApp API error: ' . $errorBody);
+        // Пытаемся извлечь сообщение об ошибке из ответа
+        $errorMessage = 'WhatsApp API error';
+        try {
+            $errorData = $response->json();
+            $errorMessage = $errorData['message'] ?? $errorData['error'] ?? $errorBody;
+        } catch (\Exception $e) {
+            $errorMessage = $errorBody;
+        }
+
+        throw new \Exception("WhatsApp API error (HTTP {$statusCode}): {$errorMessage}");
     }
 
     /**
@@ -148,9 +168,15 @@ class WhatsAppService
         // profile_id передается как query параметр согласно документации Wappi.pro
         $url = $this->apiUrl . $endpoint . '?profile_id=' . urlencode($this->profileId);
         
+        // Wappi.pro использует Bearer token для авторизации
+        $authHeader = str_starts_with($this->apiToken, 'Bearer ') 
+            ? $this->apiToken 
+            : 'Bearer ' . $this->apiToken;
+        
         $response = Http::withHeaders([
-            'Authorization' => $this->apiToken,
+            'Authorization' => $authHeader,
             'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
         ])->post($url, [
             'to' => $to,
             'body' => $message,
@@ -160,7 +186,7 @@ class WhatsAppService
             $this->incrementDailyCounter();
             
             $responseData = $response->json();
-            $taskId = $responseData['task_id'] ?? $responseData['id'] ?? null;
+            $taskId = $responseData['task_id'] ?? $responseData['id'] ?? $responseData['data']['task_id'] ?? null;
 
             Log::info("WhatsApp message queued successfully (async)", [
                 'to' => $to,
@@ -177,13 +203,24 @@ class WhatsAppService
         }
 
         $errorBody = $response->body();
+        $statusCode = $response->status();
+        
         Log::error("WhatsApp API error (async)", [
             'to' => $to,
-            'status' => $response->status(),
+            'status' => $statusCode,
             'response' => $errorBody,
         ]);
 
-        throw new \Exception('WhatsApp API error: ' . $errorBody);
+        // Пытаемся извлечь сообщение об ошибке из ответа
+        $errorMessage = 'WhatsApp API error';
+        try {
+            $errorData = $response->json();
+            $errorMessage = $errorData['message'] ?? $errorData['error'] ?? $errorBody;
+        } catch (\Exception $e) {
+            $errorMessage = $errorBody;
+        }
+
+        throw new \Exception("WhatsApp API error (HTTP {$statusCode}): {$errorMessage}");
     }
 
     /**
@@ -288,22 +325,44 @@ class WhatsAppService
             // profile_id передается как query параметр
             $url = $this->apiUrl . $endpoint . '?profile_id=' . urlencode($this->profileId);
             
+            // Wappi.pro использует Bearer token для авторизации
+            $authHeader = str_starts_with($this->apiToken, 'Bearer ') 
+                ? $this->apiToken 
+                : 'Bearer ' . $this->apiToken;
+            
             $response = Http::withHeaders([
-                'Authorization' => $this->apiToken,
+                'Authorization' => $authHeader,
                 'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
             ])->get($url);
 
             if ($response->successful()) {
+                $responseData = $response->json();
+                
                 return [
                     'success' => true,
-                    'data' => $response->json(),
+                    'data' => $responseData['data'] ?? $responseData,
+                    'profile_id' => $this->profileId,
                 ];
             }
 
-            throw new \Exception('Failed to check profile status: ' . $response->body());
+            $errorBody = $response->body();
+            $statusCode = $response->status();
+            
+            // Пытаемся извлечь сообщение об ошибке
+            $errorMessage = 'Failed to check profile status';
+            try {
+                $errorData = $response->json();
+                $errorMessage = $errorData['message'] ?? $errorData['error'] ?? $errorBody;
+            } catch (\Exception $e) {
+                $errorMessage = $errorBody;
+            }
+
+            throw new \Exception("Failed to check profile status (HTTP {$statusCode}): {$errorMessage}");
 
         } catch (\Exception $e) {
             Log::error("Failed to check WhatsApp profile status", [
+                'profile_id' => $this->profileId,
                 'error' => $e->getMessage(),
             ]);
 

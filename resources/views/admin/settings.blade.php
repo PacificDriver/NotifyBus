@@ -264,6 +264,7 @@
                 <button class="tab active" onclick="switchTab('whatsapp')">📱 WhatsApp</button>
                 <button class="tab" onclick="switchTab('email')">✉️ Email</button>
                 <button class="tab" onclick="switchTab('carrier')">🚌 API Перевозчика</button>
+                <button class="tab" onclick="switchTab('external_db')">🗄️ Внешняя БД</button>
                 <button class="tab" onclick="switchTab('notification')">🔔 Уведомления</button>
             </div>
 
@@ -381,21 +382,85 @@
                     <div class="form-group">
                         <label for="carrier_api_url">API URL</label>
                         <input type="text" id="carrier_api_url" name="url" value="http://rc.rfbus.ru:8086" placeholder="http://rc.rfbus.ru:8086">
+                        <small>Базовый URL API перевозчика</small>
                     </div>
 
                     <div class="form-group">
                         <label for="carrier_api_key">API Key (x-access-token)</label>
                         <input type="password" id="carrier_api_key" name="key" placeholder="Ваш API ключ">
+                        <small>Токен доступа для API перевозчика (будет сохранен как маска)</small>
                     </div>
 
                     <div class="form-group">
                         <label for="carrier_timeout">Timeout (секунды)</label>
                         <input type="number" id="carrier_timeout" name="timeout" value="30" min="1">
+                        <small>Таймаут запросов к API в секундах</small>
+                    </div>
+
+                    <div class="alert alert-info" style="margin-bottom: 20px;">
+                        <strong>💡 Совет:</strong> После сохранения настроек API, нажмите "Обновить станции" для синхронизации справочника станций.
                     </div>
 
                     <div class="btn-group">
                         <button type="submit" class="btn btn-primary">💾 Сохранить настройки</button>
                         <button type="button" class="btn btn-success" onclick="testCarrierApi()">🔍 Проверить подключение</button>
+                        <button type="button" class="btn btn-secondary" onclick="syncStations()" id="sync-stations-btn">🔄 Обновить станции</button>
+                    </div>
+                    
+                    <div id="sync-stations-result" style="margin-top: 15px;"></div>
+                </form>
+            </div>
+
+            <!-- External DB Settings -->
+            <div id="external_db-tab" class="tab-content">
+                <h2>Настройки внешней базы данных</h2>
+                <p style="margin-bottom: 20px; color: #666;">
+                    Настройки подключения к внешней базе данных PostgreSQL для загрузки пассажиров по ID рейсов.
+                </p>
+                <form id="external_db-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="external_db_host">Host</label>
+                            <input type="text" id="external_db_host" name="host" placeholder="localhost">
+                        </div>
+                        <div class="form-group">
+                            <label for="external_db_port">Port</label>
+                            <input type="number" id="external_db_port" name="port" value="5432" placeholder="5432">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="external_db_database">Database</label>
+                            <input type="text" id="external_db_database" name="database" placeholder="database_name">
+                        </div>
+                        <div class="form-group">
+                            <label for="external_db_username">Username</label>
+                            <input type="text" id="external_db_username" name="username" placeholder="postgres">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="external_db_password">Password</label>
+                        <input type="password" id="external_db_password" name="password" placeholder="Пароль">
+                        <small>Пароль будет сохранен как маска, реальное значение должно быть в .env файле (EXTERNAL_DB_PASSWORD)</small>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="external_db_tickets_table">Таблица билетов</label>
+                            <input type="text" id="external_db_tickets_table" name="tickets_table" value="tickets" placeholder="tickets">
+                            <small>Название таблицы с билетами/пассажирами</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="external_db_race_id_column">Колонка ID рейса</label>
+                            <input type="text" id="external_db_race_id_column" name="race_id_column" value="race_id" placeholder="race_id">
+                            <small>Название колонки с ID рейса (external_id)</small>
+                        </div>
+                    </div>
+
+                    <div class="btn-group">
+                        <button type="submit" class="btn btn-primary">💾 Сохранить настройки</button>
                     </div>
                 </form>
             </div>
@@ -451,10 +516,13 @@
         async function loadSettings() {
             try {
                 const response = await fetch(`${API_BASE}/settings`, {
+                    method: 'GET',
                     headers: {
-                        'Authorization': `Bearer ${getAuthToken()}`,
                         'Accept': 'application/json',
-                    }
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include', // Отправлять cookies для сессии
                 });
                 const data = await response.json();
 
@@ -463,10 +531,11 @@
                     fillForm('whatsapp', data.data.whatsapp || {});
                     fillForm('email', data.data.email || {});
                     fillForm('carrier_api', data.data.carrier_api || {});
+                    fillForm('external_db', data.data.external_db || {});
                     fillForm('notification', data.data.notification || {});
                 }
             } catch (error) {
-                showAlert('Ошибка при загрузке настроек: ' + error.message, 'error');
+                showAlert('⚠️ В текущий момент сервис недоступен.\n\nОшибка при загрузке настроек: ' + error.message + '\n\nОбратитесь к администратору.', 'error');
             }
         }
 
@@ -504,6 +573,11 @@
             await saveSettings('notification', new FormData(e.target));
         });
 
+        document.getElementById('external_db-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await saveSettings('external_db', new FormData(e.target));
+        });
+
         async function saveSettings(group, formData) {
             const settings = {};
             formData.forEach((value, key) => {
@@ -521,25 +595,34 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${getAuthToken()}`,
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
                     },
+                    credentials: 'include', // Отправлять cookies для сессии
                     body: JSON.stringify({
                         group: group,
                         settings: settings,
                     }),
                 });
 
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
                 const data = await response.json();
 
                 if (data.success) {
-                    showAlert('Настройки успешно сохранены!', 'success');
+                    let message = 'Настройки успешно сохранены!';
+                    if (data.warnings && data.warnings.length > 0) {
+                        message += '\n\n⚠️ Внимание:\n' + data.warnings.join('\n');
+                    }
+                    showAlert(message, 'success');
                 } else {
-                    showAlert('Ошибка: ' + data.message, 'error');
+                    throw new Error(data.message || 'Неизвестная ошибка');
                 }
             } catch (error) {
-                showAlert('Ошибка при сохранении: ' + error.message, 'error');
+                showAlert('⚠️ В текущий момент сервис недоступен.\n\nОшибка при сохранении: ' + error.message + '\n\nОбратитесь к администратору.', 'error');
             }
         }
 
@@ -561,22 +644,27 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${getAuthToken()}`,
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
                     },
+                    credentials: 'include', // Отправлять cookies для сессии
                     body: JSON.stringify({ settings }),
                 });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
 
                 const data = await response.json();
 
                 if (data.success) {
                     showAlert('✅ Подключение к WhatsApp API успешно!', 'success');
                 } else {
-                    showAlert('❌ Ошибка подключения: ' + data.message, 'error');
+                    throw new Error(data.message || 'Неизвестная ошибка подключения');
                 }
             } catch (error) {
-                showAlert('❌ Ошибка: ' + error.message, 'error');
+                showAlert('⚠️ В текущий момент сервис недоступен.\n\nОшибка подключения к WhatsApp API: ' + error.message + '\n\nОбратитесь к администратору.', 'error');
             }
         }
 
@@ -594,22 +682,27 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${getAuthToken()}`,
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
                     },
+                    credentials: 'include', // Отправлять cookies для сессии
                     body: JSON.stringify({ test_email: testEmail }),
                 });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
 
                 const data = await response.json();
 
                 if (data.success) {
                     showAlert('✅ Тестовое письмо отправлено!', 'success');
                 } else {
-                    showAlert('❌ Ошибка: ' + data.message, 'error');
+                    throw new Error(data.message || 'Неизвестная ошибка отправки');
                 }
             } catch (error) {
-                showAlert('❌ Ошибка: ' + error.message, 'error');
+                showAlert('⚠️ В текущий момент сервис недоступен.\n\nОшибка отправки тестового письма: ' + error.message + '\n\nОбратитесь к администратору для проверки настроек Email.', 'error');
             }
         }
 
@@ -628,22 +721,27 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${getAuthToken()}`,
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
                     },
+                    credentials: 'include', // Отправлять cookies для сессии
                     body: JSON.stringify({ settings }),
                 });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
 
                 const data = await response.json();
 
                 if (data.success) {
                     showAlert('✅ Подключение к API Перевозчика успешно!', 'success');
                 } else {
-                    showAlert('❌ Ошибка подключения: ' + data.message, 'error');
+                    throw new Error(data.message || 'Неизвестная ошибка подключения');
                 }
             } catch (error) {
-                showAlert('❌ Ошибка: ' + error.message, 'error');
+                showAlert('⚠️ В текущий момент сервис недоступен.\n\nОшибка подключения к API Перевозчика: ' + error.message + '\n\nОбратитесь к администратору для проверки настроек.', 'error');
             }
         }
 
@@ -655,10 +753,44 @@
             }, 5000);
         }
 
-        function getAuthToken() {
-            // Здесь нужно получить токен из localStorage или cookie
-            // Для примера используем заглушку
-            return localStorage.getItem('auth_token') || '';
+        async function syncStations() {
+            const button = document.getElementById('sync-stations-btn');
+            const resultDiv = document.getElementById('sync-stations-result');
+            const originalText = button.textContent;
+            
+            button.disabled = true;
+            button.textContent = '⏳ Синхронизация...';
+            resultDiv.innerHTML = '<div class="alert alert-info">Синхронизация станций...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/stations/sync`, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    resultDiv.innerHTML = `<div class="alert alert-success">✅ Синхронизация завершена успешно!<br>Синхронизировано станций: <strong>${data.synced_count || 0}</strong></div>`;
+                } else {
+                    throw new Error(data.message || 'Неизвестная ошибка синхронизации');
+                }
+            } catch (error) {
+                console.error('Error syncing stations:', error);
+                resultDiv.innerHTML = `<div class="alert alert-error">⚠️ В текущий момент сервис недоступен.<br><br>Ошибка синхронизации станций: ${error.message}<br><br>Обратитесь к администратору для проверки настроек API Перевозчика.</div>`;
+            } finally {
+                button.disabled = false;
+                button.textContent = originalText;
+            }
         }
     </script>
 </body>

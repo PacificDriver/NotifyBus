@@ -12,6 +12,7 @@ class NotificationTask extends Model
     protected $fillable = [
         'title',
         'created_by',
+        'races_data',
         'trip_ids',
         'template_id',
         'custom_message',
@@ -27,6 +28,7 @@ class NotificationTask extends Model
     protected function casts(): array
     {
         return [
+            'races_data' => 'array',
             'trip_ids' => 'array',
             'scheduled_at' => 'datetime',
             'started_at' => 'datetime',

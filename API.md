@@ -3,13 +3,23 @@
 ## Базовая информация
 
 - **Base URL**: `https://yourdomain.com/api`
-- **Аутентификация**: Laravel Sanctum (Bearer Token)
+- **Аутентификация**: Laravel Session Auth (для веб-запросов)
+  - Для API можно установить Laravel Sanctum (см. `SANCTUM_SETUP.md`)
 - **Формат ответов**: JSON
 - **Кодировка**: UTF-8
 
 ## Аутентификация
 
-Все запросы требуют токен аутентификации в заголовке:
+### Текущая конфигурация (Session Auth)
+
+Для веб-запросов используется стандартная аутентификация Laravel через сессии.
+API endpoints требуют, чтобы пользователь был авторизован через веб-интерфейс.
+
+### Если нужен Sanctum для токенов
+
+Если требуется использовать API с токенами (Bearer Token), установите Laravel Sanctum:
+- См. инструкции в `SANCTUM_SETUP.md`
+- После установки Sanctum можно использовать:
 
 ```http
 Authorization: Bearer YOUR_TOKEN_HERE
