@@ -265,6 +265,8 @@
                 <button class="tab" onclick="switchTab('email')">✉️ Email</button>
                 <button class="tab" onclick="switchTab('carrier')">🚌 API Перевозчика</button>
                 <button class="tab" onclick="switchTab('notification')">🔔 Уведомления</button>
+                <button class="tab" onclick="switchTab('search_history')">🕘 История поиска</button>
+                <button class="tab" onclick="switchTab('operators')">👥 Операторы</button>
             </div>
 
             <!-- WhatsApp Settings -->
@@ -448,12 +450,92 @@
                     </div>
                 </form>
             </div>
+
+            <div id="search_history-tab" class="tab-content">
+                <h2>История поиска операторов</h2>
+                <p style="margin-bottom: 20px; color: #666;">
+                    Журнал всех запросов отмененных рейсов. Используйте фильтры, чтобы просматривать только запросы с найденными отмененными рейсами или выбрать конкретного оператора.
+                </p>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="history_filter">Фильтр</label>
+                        <select id="history_filter">
+                            <option value="all">Все запросы</option>
+                            <option value="cancelled">Только с отмененными рейсами</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="history_operator">Оператор</label>
+                        <select id="history_operator">
+                            <option value="">Все операторы</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button type="button" class="btn btn-secondary" onclick="loadAdminSearchHistory()">🔄 Обновить историю</button>
+                </div>
+
+                <div id="history_result" style="margin-top: 20px;"></div>
+            </div>
+
+            <div id="operators-tab" class="tab-content">
+                <h2>Управление операторами</h2>
+                <p style="margin-bottom: 20px; color: #666;">
+                    Создавайте новых операторов, изменяйте данные существующих и деактивируйте аккаунты. Пароль при редактировании можно оставить пустым, если менять его не требуется.
+                </p>
+
+                <div class="card" style="padding: 20px; margin-bottom: 20px;">
+                    <h3 style="margin-bottom: 15px;">Добавить нового оператора</h3>
+                    <form id="operator-create-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="operator_name">Имя</label>
+                                <input type="text" id="operator_name" name="name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="operator_email">Email</label>
+                                <input type="email" id="operator_email" name="email" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="operator_password">Пароль</label>
+                                <input type="password" id="operator_password" name="password" required minlength="8">
+                                <small>Минимум 8 символов</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="operator_active">Активен</label>
+                                <select id="operator_active" name="is_active">
+                                    <option value="1">Да</option>
+                                    <option value="0">Нет</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">➕ Создать оператора</button>
+                    </form>
+                </div>
+
+                <div id="operators_list" style="margin-top: 20px;"></div>
+            </div>
         </div>
     </div>
 
     <script>
         const API_BASE = '/api';
         const token = document.querySelector('meta[name="csrf-token"]').content;
+        const historyState = {
+            initialized: false,
+            filter: 'all',
+            operatorId: '',
+            currentPage: 1,
+            loading: false,
+        };
+        const operatorsState = {
+            initialized: false,
+            list: [],
+        };
 
         // Загрузка настроек при открытии страницы
         document.addEventListener('DOMContentLoaded', function() {
@@ -472,6 +554,14 @@
             // Показать выбранный таб
             document.getElementById(`${tabName}-tab`).classList.add('active');
             event.target.classList.add('active');
+
+            if (tabName === 'search_history' && !historyState.initialized) {
+                initializeHistoryTab();
+            }
+
+            if (tabName === 'operators' && !operatorsState.initialized) {
+                initializeOperatorsTab();
+            }
         }
 
         async function loadSettings() {
@@ -888,6 +978,386 @@
             } finally {
                 button.disabled = false;
                 button.textContent = originalText;
+            }
+        }
+
+        function initializeHistoryTab() {
+            historyState.initialized = true;
+            const filterSelect = document.getElementById('history_filter');
+            const operatorSelect = document.getElementById('history_operator');
+
+            filterSelect.addEventListener('change', () => {
+                historyState.filter = filterSelect.value;
+                loadAdminSearchHistory();
+            });
+
+            operatorSelect.addEventListener('change', () => {
+                historyState.operatorId = operatorSelect.value;
+                loadAdminSearchHistory();
+            });
+
+            loadOperatorsData({ populateHistorySelect: true }).then(() => {
+                loadAdminSearchHistory();
+            });
+        }
+
+        async function loadAdminSearchHistory(page = 1) {
+            const container = document.getElementById('history_result');
+            if (!container) return;
+
+            historyState.loading = true;
+            historyState.currentPage = page;
+
+            container.innerHTML = '<div class="alert alert-info">⏳ Загрузка истории...</div>';
+
+            const params = new URLSearchParams({
+                filter: historyState.filter,
+                page: page.toString(),
+                per_page: '25',
+            });
+
+            if (historyState.operatorId) {
+                params.append('user_id', historyState.operatorId);
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/search-history?${params.toString()}`, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.message || 'Не удалось загрузить историю поиска');
+                }
+
+                const items = data.data?.data || data.data || [];
+
+                if (items.length === 0) {
+                    container.innerHTML = '<div class="alert alert-info">История поиска пуста.</div>';
+                    return;
+                }
+
+                const rows = items.map(item => {
+                    const createdAt = formatDateTimeLocal(item.created_at);
+                    const route = `${item.from_station_name || '—'} → ${item.to_station_name || '—'}`;
+                    const tripDate = item.trip_date ? formatDateLocal(item.trip_date) : '—';
+                    const cancelled = item.cancelled_count ?? 0;
+                    const operator = item.user?.name ? `${item.user.name} (${item.user.email})` : '—';
+
+                    const badgeClass = cancelled > 0 ? 'badge badge-danger' : 'badge badge-warning';
+
+                    return `
+                        <tr>
+                            <td>${createdAt}</td>
+                            <td>${route}</td>
+                            <td>${tripDate}</td>
+                            <td style="text-align:center;"><span class="${badgeClass}">${cancelled}</span></td>
+                            <td>${operator}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                const table = `
+                    <div style="overflow-x:auto;">
+                        <table style="width:100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="background:#f0f0f0;">
+                                    <th style="padding:10px; border-bottom:1px solid #ddd;">Когда</th>
+                                    <th style="padding:10px; border-bottom:1px solid #ddd;">Маршрут</th>
+                                    <th style="padding:10px; border-bottom:1px солид #ddd;">Дата рейса</th>
+                                    <th style="padding:10px; border-bottom:1px solid #ddd;">Отмененные</th>
+                                    <th style="padding:10px; border-bottom:1px solid #ddd;">Оператор</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                `;
+
+                container.innerHTML = table;
+            } catch (error) {
+                container.innerHTML = `<div class="alert alert-error">⚠️ Ошибка загрузки истории поиска:<br>${error.message}</div>`;
+            } finally {
+                historyState.loading = false;
+            }
+        }
+
+        function formatDateTimeLocal(value) {
+            if (!value) return '—';
+            try {
+                const date = new Date(value);
+                if (isNaN(date.getTime())) return value;
+                return date.toLocaleString('ru-RU', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                });
+            } catch (e) {
+                return value;
+            }
+        }
+
+        function formatDateLocal(value) {
+            if (!value) return '—';
+            try {
+                const date = new Date(value);
+                if (isNaN(date.getTime())) return value;
+                return date.toLocaleDateString('ru-RU', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                });
+            } catch (e) {
+                return value;
+            }
+        }
+
+        function initializeOperatorsTab() {
+            operatorsState.initialized = true;
+
+            const createForm = document.getElementById('operator-create-form');
+            if (createForm) {
+                createForm.addEventListener('submit', async (event) => {
+                    event.preventDefault();
+                    await createOperator(new FormData(createForm));
+                });
+            }
+
+            loadOperatorsData({ populateHistorySelect: !historyState.initialized }).then(() => {
+                renderOperatorsList();
+            });
+        }
+
+        async function loadOperatorsData(options = { populateHistorySelect: false }) {
+            try {
+                const response = await fetch(`${API_BASE}/operators`, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.message || 'Не удалось загрузить список операторов');
+                }
+
+                operatorsState.list = data.data || [];
+
+                if (options.populateHistorySelect && historyState.initialized) {
+                    populateHistoryOperatorSelect();
+                }
+
+                if (operatorsState.initialized) {
+                    renderOperatorsList();
+                }
+            } catch (error) {
+                console.error('Error loading operators:', error);
+                if (options.populateHistorySelect && historyState.initialized) {
+                    populateHistoryOperatorSelect();
+                }
+                const listContainer = document.getElementById('operators_list');
+                if (listContainer) {
+                    listContainer.innerHTML = `<div class="alert alert-error">⚠️ Не удалось загрузить операторов: ${error.message}</div>`;
+                }
+            }
+        }
+
+        function populateHistoryOperatorSelect() {
+            const operatorSelect = document.getElementById('history_operator');
+            if (!operatorSelect) return;
+
+            operatorSelect.innerHTML = '<option value="">Все операторы</option>';
+            operatorsState.list.forEach(operator => {
+                const option = document.createElement('option');
+                option.value = operator.id;
+                option.textContent = `${operator.name} (${operator.email})`;
+                operatorSelect.appendChild(option);
+            });
+        }
+
+        async function createOperator(formData) {
+            const payload = {
+                name: formData.get('name'),
+                email: formData.get('email'),
+                password: formData.get('password'),
+                is_active: formData.get('is_active') === '1',
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/operators`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(payload),
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || `HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                showAlert(data.message || 'Оператор создан', 'success');
+                document.getElementById('operator-create-form').reset();
+                loadOperatorsData({ populateHistorySelect: historyState.initialized });
+            } catch (error) {
+                showAlert('⚠️ Ошибка создания оператора: ' + error.message, 'error');
+            }
+        }
+
+        function renderOperatorsList() {
+            const container = document.getElementById('operators_list');
+            if (!container) return;
+
+            if (!operatorsState.list || operatorsState.list.length === 0) {
+                container.innerHTML = '<div class="alert alert-info">Пока нет созданных операторов.</div>';
+                return;
+            }
+
+            const cards = operatorsState.list.map(operator => {
+                const activeValue = operator.is_active ? '1' : '0';
+                return `
+                    <div class="card" style="padding: 20px; margin-bottom: 15px;">
+                        <form class="operator-edit-form" data-operator-id="${operator.id}">
+                            <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 10px;">
+                                <h3 style="margin: 0;">${operator.name}</h3>
+                                <span style="color: ${operator.is_active ? '#2f9e44' : '#c92a2a'};">
+                                    ${operator.is_active ? 'Активен' : 'Неактивен'}
+                                </span>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Имя</label>
+                                    <input type="text" name="name" value="${operator.name}" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Email</label>
+                                    <input type="email" name="email" value="${operator.email}" required>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Новый пароль</label>
+                                    <input type="password" name="password" placeholder="Оставьте пустым, если без изменений" minlength="8">
+                                </div>
+                                <div class="form-group">
+                                    <label>Статус</label>
+                                    <select name="is_active">
+                                        <option value="1" ${activeValue === '1' ? 'selected' : ''}>Активен</option>
+                                        <option value="0" ${activeValue === '0' ? 'selected' : ''}>Неактивен</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="btn-group">
+                                <button type="submit" class="btn btn-primary">💾 Сохранить</button>
+                                <button type="button" class="btn btn-secondary" onclick="deleteOperator(${operator.id})">🗑️ Удалить</button>
+                            </div>
+                        </form>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = cards;
+
+            container.querySelectorAll('.operator-edit-form').forEach(form => {
+                form.addEventListener('submit', async (event) => {
+                    event.preventDefault();
+                    const operatorId = form.getAttribute('data-operator-id');
+                    const formData = new FormData(form);
+                    await updateOperator(operatorId, formData);
+                });
+            });
+        }
+
+        async function updateOperator(operatorId, formData) {
+            const payload = {
+                name: formData.get('name'),
+                email: formData.get('email'),
+                is_active: formData.get('is_active') === '1',
+            };
+
+            const password = formData.get('password');
+            if (password) {
+                payload.password = password;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/operators/${operatorId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(payload),
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || `HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                showAlert(data.message || 'Оператор обновлен', 'success');
+                loadOperatorsData({ populateHistorySelect: historyState.initialized });
+            } catch (error) {
+                showAlert('⚠️ Ошибка обновления оператора: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteOperator(operatorId) {
+            if (!confirm('Удалить оператора? Вы всегда сможете создать его заново.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/operators/${operatorId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || `HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                showAlert(data.message || 'Оператор удален', 'success');
+                loadOperatorsData({ populateHistorySelect: historyState.initialized });
+            } catch (error) {
+                showAlert('⚠️ Ошибка удаления оператора: ' + error.message, 'error');
             }
         }
     </script>

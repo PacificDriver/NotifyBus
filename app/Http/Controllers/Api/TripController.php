@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Trip;
 use App\Models\Station;
+use App\Models\SearchHistory;
 use App\Services\CarrierApiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -77,6 +78,8 @@ class TripController extends Controller
                 (int)$toStation->external_id,
                 $request->input('date')
             );
+
+            $this->logSearchHistory($request, $fromStation, $toStation, $cancelledRaces);
 
             // Возвращаем данные рейсов в формате согласно ТЗ
             // Структура ответа API рейсов:
@@ -170,6 +173,37 @@ class TripController extends Controller
             'success' => true,
             'data' => $trip,
         ]);
+    }
+
+    protected function logSearchHistory(Request $request, Station $fromStation, Station $toStation, array $races): void
+    {
+        try {
+            $userId = $request->user()?->id;
+            $tripDate = $request->input('date');
+            $cancelledCount = count($races);
+
+            SearchHistory::create([
+                'user_id' => $userId,
+                'from_station_id' => $fromStation->id,
+                'to_station_id' => $toStation->id,
+                'from_station_name' => $fromStation->name,
+                'to_station_name' => $toStation->name,
+                'trip_date' => $tripDate,
+                'cancelled_count' => $cancelledCount,
+                'result_count' => $cancelledCount,
+                'search_type' => 'cancelled',
+                'query_payload' => [
+                    'from_station_external_id' => $fromStation->external_id,
+                    'to_station_external_id' => $toStation->external_id,
+                    'route_timezone' => $races[0]['route_tz'] ?? null,
+                    'request_date' => $tripDate,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('Failed to log search history', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }
 

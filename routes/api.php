@@ -37,6 +37,9 @@ Route::middleware(['auth:web'])->group(function () {
         Route::get('/', 'App\Http\Controllers\Api\TripController@getCancelled'); // GET /api/races?from={id}&to={id}&date={Y-m-d}
     });
 
+    // История поиска
+    Route::get('/search-history', 'App\Http\Controllers\Api\SearchHistoryController@index');
+
     // Пассажиры
     Route::prefix('passengers')->group(function () {
         Route::get('/by-trip/{tripId}', 'App\Http\Controllers\Api\PassengerController@getByTrip');
@@ -80,6 +83,14 @@ Route::middleware(['auth:web'])->group(function () {
         Route::post('/test/whatsapp/send', 'App\Http\Controllers\Api\SettingsController@testSendWhatsApp');
         Route::post('/test/email', 'App\Http\Controllers\Api\SettingsController@testEmail');
         Route::post('/test/carrier-api', 'App\Http\Controllers\Api\SettingsController@testCarrierApi');
+    });
+
+    // Управление операторами (только администратор)
+    Route::middleware('role:admin')->prefix('operators')->group(function () {
+        Route::get('/', 'App\Http\Controllers\Api\OperatorController@index');
+        Route::post('/', 'App\Http\Controllers\Api\OperatorController@store');
+        Route::put('/{id}', 'App\Http\Controllers\Api\OperatorController@update');
+        Route::delete('/{id}', 'App\Http\Controllers\Api\OperatorController@destroy');
     });
 });
 

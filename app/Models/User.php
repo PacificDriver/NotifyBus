@@ -54,5 +54,10 @@ class User extends Authenticatable
     {
         return $this->hasMany(MessageTemplate::class, 'created_by');
     }
+
+    public function searchHistories()
+    {
+        return $this->hasMany(SearchHistory::class);
+    }
 }
 

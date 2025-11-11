@@ -11,6 +11,9 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    ->withProviders([
+        \App\Providers\DynamicSettingsServiceProvider::class,
+    ])
     ->withMiddleware(function (Middleware $middleware) {
         // Используем веб-аутентификацию для API запросов из браузера
         // Это позволяет использовать сессии для API запросов из браузера

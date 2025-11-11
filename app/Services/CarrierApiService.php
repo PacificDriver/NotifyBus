@@ -15,8 +15,8 @@ use App\Models\Passenger;
  */
 class CarrierApiService
 {
-    protected string $apiUrl;
-    protected string $apiKey;
+    protected string $apiUrl = '';
+    protected string $apiKey = '';
     protected int $timeout;
 
     public function __construct()

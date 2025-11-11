@@ -479,6 +479,68 @@
                 </div>
             </div>
         </div>
+
+        <div class="card">
+            <h3 style="margin-bottom: 15px; color: #555;">🕘 История поиска</h3>
+            <p style="margin-bottom: 15px; color: #666;">
+                Здесь отображаются последние запросы отмененных рейсов. Используйте фильтр, чтобы увидеть все запросы или только те, где были найдены отмененные рейсы.
+            </p>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <button class="btn" :class="historyFilter === 'all' ? 'btn-primary' : 'btn-secondary'" @click="changeHistoryFilter('all')" style="min-width: 120px;">
+                    Все
+                </button>
+                <button class="btn" :class="historyFilter === 'cancelled' ? 'btn-primary' : 'btn-secondary'" @click="changeHistoryFilter('cancelled')" style="min-width: 120px;">
+                    Только отмененные
+                </button>
+            </div>
+
+            <div v-if="historyLoading" style="padding: 20px; text-align: center; color: #666;">
+                ⏳ Загрузка истории...
+            </div>
+
+            <div v-else>
+                <div v-if="searchHistory.length === 0" style="padding: 20px; background: #f8f9fa; border-radius: 8px; color: #666;">
+                    История пока пуста. Выполните поиск отмененных рейсов, чтобы запись появилась в списке.
+                </div>
+
+                <div v-else style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f0f0f0; text-align: left;">
+                                <th style="padding: 10px; border-bottom: 1px solid #ddd;">Когда</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #ddd;">Маршрут</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #ddd;">Дата рейса</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #ddd; text-align: center;">Найдено отмененных</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="item in searchHistory" :key="item.id">
+                                <td style="padding: 10px; border-bottom: 1px solid #f0f0f0;">
+                                    @{{ formatDateTimeLocal(item.created_at) }}
+                                </td>
+                                <td style="padding: 10px; border-bottom: 1px solid #f0f0f0;">
+                                    <div style="font-weight: 600;">
+                                        @{{ item.from_station_name || '—' }} → @{{ item.to_station_name || '—' }}
+                                    </div>
+                                    <div style="font-size: 0.9rem; color: #666;">
+                                        ID: @{{ item.from_station_id || '—' }} → @{{ item.to_station_id || '—' }}
+                                    </div>
+                                </td>
+                                <td style="padding: 10px; border-bottom: 1px solid #f0f0f0;">
+                                    @{{ item.trip_date ? formatDate(item.trip_date) : '—' }}
+                                </td>
+                                <td style="padding: 10px; border-bottom: 1px solid #f0f0f0; text-align: center;">
+                                    <span :class="item.cancelled_count > 0 ? 'badge badge-danger' : 'badge badge-warning'">
+                                        @{{ item.cancelled_count }}
+                                    </span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </div>
     
     <script>
@@ -516,7 +578,11 @@
                         sent: 0,
                         pending: 0,
                         failed: 0
-                    }
+                    },
+                    searchHistory: [],
+                    historyFilter: 'all',
+                    historyLoading: false,
+                    historyPagination: null
                 }
             },
             computed: {
@@ -536,6 +602,7 @@
             mounted() {
                 this.loadStations();
                 this.loadTemplates();
+                this.loadSearchHistory();
             },
             methods: {
                 async loadStations() {
@@ -991,6 +1058,63 @@
                     } catch (e) {
                         console.warn('Error formatting datetime:', datetime, e);
                         return datetime;
+                    }
+                },
+                formatDateTimeLocal(datetime) {
+                    if (!datetime) return '—';
+                    try {
+                        const date = new Date(datetime);
+                        if (Number.isNaN(date.getTime())) {
+                            return datetime;
+                        }
+                        return date.toLocaleString('ru-RU', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                        });
+                    } catch (e) {
+                        return datetime;
+                    }
+                },
+                async loadSearchHistory(page = 1) {
+                    this.historyLoading = true;
+                    try {
+                        const response = await fetch(`/api/search-history?filter=${this.historyFilter}&page=${page}&per_page=25`, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            credentials: 'include',
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+
+                        const data = await response.json();
+                        if (data.success && data.data) {
+                            this.searchHistory = data.data.data || data.data;
+                            this.historyPagination = {
+                                current_page: data.data.current_page || 1,
+                                last_page: data.data.last_page || 1,
+                            };
+                        }
+                    } catch (error) {
+                        console.error('Error loading search history:', error);
+                        this.searchHistory = [];
+                        this.historyPagination = null;
+                    } finally {
+                        this.historyLoading = false;
+                    }
+                },
+                changeHistoryFilter(filter) {
+                    if (this.historyFilter !== filter) {
+                        this.historyFilter = filter;
+                        this.loadSearchHistory();
                     }
                 },
                 async sendNotifications() {

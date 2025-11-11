@@ -417,59 +417,66 @@ class NotificationTaskController extends Controller
 
             $template = $task->template;
 
-            // Создаем уведомления для каждого пассажира
-            foreach ($passengers as $passenger) {
-                $trip = $passenger->trip;
-                
-                // Определяем текст сообщения
-                if ($template) {
-                    $variables = MessageTemplate::getVariablesForPassenger($passenger, $trip);
-                    $renderedMessage = $template->render($variables);
-                    $subject = $renderedMessage['subject'];
-                    $message = $renderedMessage['body'];
-                } else {
-                    $subject = 'Уведомление о рейсе';
-                    $message = $customMessage ?? $task->custom_message;
+            $batchSize = max(1, (int) config('notifications.batch_size', 10));
+            $delayBetweenBatches = max(0, (int) config('notifications.delay_seconds', 2));
+
+            $batchIndex = 0;
+            foreach ($passengers->chunk($batchSize) as $chunk) {
+                $baseDelay = now()->addSeconds($batchIndex * $delayBetweenBatches);
+                $offset = 0;
+
+                foreach ($chunk as $passenger) {
+                    $trip = $passenger->trip;
+
+                    if ($template) {
+                        $variables = MessageTemplate::getVariablesForPassenger($passenger, $trip);
+                        $renderedMessage = $template->render($variables);
+                        $subject = $renderedMessage['subject'];
+                        $message = $renderedMessage['body'];
+                    } else {
+                        $subject = 'Уведомление о рейсе';
+                        $message = $customMessage ?? $task->custom_message;
+                    }
+
+                    $message = $this->replaceSimpleVariables($message, $trip);
+                    $notificationDelay = $baseDelay->copy()->addSeconds($offset);
+
+                    if ($passenger->hasEmail()) {
+                        $notification = Notification::create([
+                            'notification_task_id' => $task->id,
+                            'passenger_id' => $passenger->id,
+                            'trip_id' => $passenger->trip_id,
+                            'channel' => 'email',
+                            'recipient' => $passenger->email,
+                            'subject' => $subject,
+                            'message' => $message,
+                            'status' => 'pending',
+                        ]);
+
+                        SendNotificationJob::dispatch($notification)
+                            ->delay($notificationDelay);
+                    }
+
+                    if ($passenger->hasPhone()) {
+                        $notification = Notification::create([
+                            'notification_task_id' => $task->id,
+                            'passenger_id' => $passenger->id,
+                            'trip_id' => $passenger->trip_id,
+                            'channel' => 'whatsapp',
+                            'recipient' => $passenger->phone,
+                            'subject' => null,
+                            'message' => $message,
+                            'status' => 'pending',
+                        ]);
+
+                        SendNotificationJob::dispatch($notification)
+                            ->delay($notificationDelay);
+                    }
+
+                    $offset++;
                 }
 
-                // Замена простых переменных {РЕЙС}, {ДАТА}, {ВРЕМЯ}
-                $message = $this->replaceSimpleVariables($message, $trip);
-
-                // Email уведомление
-                if ($passenger->hasEmail()) {
-                    $notification = Notification::create([
-                        'notification_task_id' => $task->id,
-                        'passenger_id' => $passenger->id,
-                        'trip_id' => $passenger->trip_id,
-                        'channel' => 'email',
-                        'recipient' => $passenger->email,
-                        'subject' => $subject,
-                        'message' => $message,
-                        'status' => 'pending',
-                    ]);
-
-                    // Добавляем в очередь с задержкой
-                    SendNotificationJob::dispatch($notification)
-                        ->delay(now()->addSeconds(rand(1, 5)));
-                }
-
-                // WhatsApp уведомление
-                if ($passenger->hasPhone()) {
-                    $notification = Notification::create([
-                        'notification_task_id' => $task->id,
-                        'passenger_id' => $passenger->id,
-                        'trip_id' => $passenger->trip_id,
-                        'channel' => 'whatsapp',
-                        'recipient' => $passenger->phone,
-                        'subject' => null,
-                        'message' => $message,
-                        'status' => 'pending',
-                    ]);
-
-                    // Добавляем в очередь с задержкой
-                    SendNotificationJob::dispatch($notification)
-                        ->delay(now()->addSeconds(rand(1, 5)));
-                }
+                $batchIndex++;
             }
 
             $task->update([
