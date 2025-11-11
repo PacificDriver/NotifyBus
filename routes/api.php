@@ -77,6 +77,7 @@ Route::middleware(['auth:web'])->group(function () {
         Route::get('/status', 'App\Http\Controllers\Api\SettingsController@status');
         Route::post('/', 'App\Http\Controllers\Api\SettingsController@store');
         Route::post('/test/whatsapp', 'App\Http\Controllers\Api\SettingsController@testWhatsApp');
+        Route::post('/test/whatsapp/send', 'App\Http\Controllers\Api\SettingsController@testSendWhatsApp');
         Route::post('/test/email', 'App\Http\Controllers\Api\SettingsController@testEmail');
         Route::post('/test/carrier-api', 'App\Http\Controllers\Api\SettingsController@testCarrierApi');
     });

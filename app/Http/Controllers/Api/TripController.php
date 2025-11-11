@@ -37,11 +37,37 @@ class TripController extends Controller
             $fromStation = Station::findOrFail($request->input('from'));
             $toStation = Station::findOrFail($request->input('to'));
 
-            // Проверяем наличие external_id
-            if (!$fromStation->external_id || !$toStation->external_id) {
+            // Проверяем наличие external_id (проверяем на null, пустую строку, "0" и false)
+            $fromHasExternalId = !empty($fromStation->external_id) && $fromStation->external_id !== '0';
+            $toHasExternalId = !empty($toStation->external_id) && $toStation->external_id !== '0';
+            
+            if (!$fromHasExternalId || !$toHasExternalId) {
+                $missingStations = [];
+                if (!$fromHasExternalId) {
+                    $missingStations[] = $fromStation->name . ' (ID: ' . $fromStation->id . ', external_id: ' . ($fromStation->external_id ?? 'null') . ')';
+                }
+                if (!$toHasExternalId) {
+                    $missingStations[] = $toStation->name . ' (ID: ' . $toStation->id . ', external_id: ' . ($toStation->external_id ?? 'null') . ')';
+                }
+                
+                Log::warning("Stations missing external_id", [
+                    'from_station' => [
+                        'id' => $fromStation->id,
+                        'name' => $fromStation->name,
+                        'external_id' => $fromStation->external_id,
+                    ],
+                    'to_station' => [
+                        'id' => $toStation->id,
+                        'name' => $toStation->name,
+                        'external_id' => $toStation->external_id,
+                    ],
+                ]);
+                
                 return response()->json([
                     'success' => false,
-                    'message' => 'Stations must have external_id. Please sync stations first.',
+                    'message' => 'Станции должны иметь external_id. Пожалуйста, сначала синхронизируйте станции.',
+                    'details' => 'Следующие станции не синхронизированы: ' . implode(', ', $missingStations),
+                    'hint' => 'Перейдите в админ-панель → Настройки → API Перевозчика и нажмите кнопку "Обновить станции"',
                 ], 400);
             }
 

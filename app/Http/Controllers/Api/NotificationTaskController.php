@@ -3,13 +3,16 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\NotificationTask;
-use App\Models\Passenger;
-use App\Models\Notification;
-use App\Models\MessageTemplate;
-use App\Models\Trip;
 use App\Jobs\SendNotificationJob;
 use App\Services\ExternalDatabaseService;
+use App\Models\MessageTemplate;
+use App\Models\Notification;
+use App\Models\NotificationTask;
+use App\Models\Passenger;
+use App\Models\Route;
+use App\Models\Station;
+use App\Models\Trip;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +21,7 @@ use Illuminate\Support\Facades\Log;
 class NotificationTaskController extends Controller
 {
     protected ExternalDatabaseService $externalDbService;
+    protected ?\Illuminate\Support\Collection $stationsCache = null;
 
     public function __construct(ExternalDatabaseService $externalDbService)
     {
@@ -52,16 +56,38 @@ class NotificationTaskController extends Controller
         ]);
 
         try {
-            // Название задачи генерируется автоматически в модели на основе текущей даты и времени
+            // Проверяем, что пользователь авторизован
+            $user = $request->user();
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Пользователь не авторизован',
+                ], 401);
+            }
+
+            // Генерируем название задачи автоматически на основе текущей даты и времени
+            $title = 'Рассылка уведомлений - ' . now()->format('d.m.Y H:i:s');
+            
+            Log::info("Creating notification task", [
+                'user_id' => $user->id,
+                'title' => $title,
+            ]);
+            
             $task = NotificationTask::create([
+                'title' => $title, // Генерируем название явно
                 'races_data' => [], // Пустой массив, рейсы добавляются позже
                 'trip_ids' => [], // Пустой массив, будет заполнен после загрузки пассажиров
                 'template_id' => $validated['template_id'] ?? null,
                 'custom_message' => $validated['custom_message'] ?? null,
-                'created_by' => $request->user()->id,
+                'created_by' => $user->id,
                 'total_recipients' => 0, // Будет заполнено после загрузки пассажиров
                 'status' => 'draft',
                 'scheduled_at' => $validated['scheduled_at'] ?? null,
+            ]);
+
+            Log::info("Notification task created successfully", [
+                'task_id' => $task->id,
+                'title' => $task->title,
             ]);
 
             return response()->json([
@@ -70,10 +96,17 @@ class NotificationTaskController extends Controller
                 'message' => 'Задача создана успешно. Теперь можно добавить отмененные рейсы.',
             ], 201);
             
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ошибка валидации: ' . $e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             Log::error("Failed to create notification task", [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
+                'user_id' => $request->user()?->id,
             ]);
 
             return response()->json([
@@ -203,16 +236,43 @@ class NotificationTaskController extends Controller
                     continue;
                 }
 
-                // Создаем или находим trip
-                // TODO: Может потребоваться создать Route и Station если их нет
-                $trip = Trip::firstOrCreate(
-                    ['external_id' => $raceId],
+                $route = $this->resolveRoute($raceData);
+
+                if (!$route) {
+                    Log::warning('Route could not be resolved for race', [
+                        'race_id' => $raceId,
+                        'race_data' => $raceData,
+                    ]);
+                    continue;
+                }
+
+                $departureTime = $this->parseRaceDateTime($raceData['dt_depart'] ?? null);
+                $arrivalTime = $this->parseRaceDateTime($raceData['dt_arrive'] ?? null);
+
+                if (!$arrivalTime && $departureTime) {
+                    $arrivalTime = Carbon::parse($departureTime)->addMinutes(90)->toDateTimeString();
+                }
+
+                if (!$departureTime) {
+                    $departureTime = now()->toDateTimeString();
+                }
+
+                if (!$arrivalTime) {
+                    $arrivalTime = Carbon::parse($departureTime)->addMinutes(90)->toDateTimeString();
+                }
+
+                $trip = Trip::updateOrCreate(
+                    ['external_id' => (string) $raceId],
                     [
-                        'route_id' => 1, // TODO: Нужно определить route_id из данных рейса
-                        'trip_number' => $raceData['id'] ?? $raceId,
-                        'departure_time' => isset($raceData['dt_depart']) ? date('Y-m-d H:i:s', strtotime($raceData['dt_depart'])) : now(),
-                        'arrival_time' => isset($raceData['dt_arrive']) ? date('Y-m-d H:i:s', strtotime($raceData['dt_arrive'])) : now(),
+                        'route_id' => $route->id,
+                        'trip_number' => $raceData['trip_number']
+                            ?? $raceData['route_number']
+                            ?? $raceData['id']
+                            ?? $raceId,
+                        'departure_time' => $departureTime,
+                        'arrival_time' => $arrivalTime,
                         'status' => 'cancelled',
+                        'delay_minutes' => $raceData['delay_minutes'] ?? null,
                     ]
                 );
 
@@ -232,9 +292,23 @@ class NotificationTaskController extends Controller
                         'middle_name' => $passengerData['middle_name'] ?? null,
                         'email' => $passengerData['email'] ?? null,
                         'phone' => $passengerData['phone'] ?? null,
+                        'birth_date' => $passengerData['birth_date'] ?? null,
+                        'document_type' => $passengerData['document_type'] ?? null,
+                        'document_series' => $passengerData['document_series'] ?? null,
+                        'document_number' => $passengerData['document_number'] ?? null,
+                        'document_issued_at' => $passengerData['document_issued_at'] ?? null,
                         'seat_number' => $passengerData['seat_number'] ?? null,
                         'ticket_price' => $passengerData['ticket_price'] ?? null,
+                        'ticket_service_fee' => $passengerData['ticket_service_fee'] ?? null,
+                        'ticket_total_price' => $passengerData['ticket_total_price'] ?? null,
+                        'ticket_discount' => $passengerData['ticket_discount'] ?? null,
                         'ticket_status' => $passengerData['ticket_status'] ?? 'booked',
+                        'passenger_type' => $passengerData['passenger_type'] ?? null,
+                        'external_order_id' => $passengerData['external_order_id'] ?? null,
+                        'ticket_uid' => $passengerData['ticket_uid'] ?? null,
+                        'ticket_number' => $passengerData['ticket_number'] ?? null,
+                        'ticket_purchased_at' => $passengerData['ticket_purchased_at'] ?? null,
+                        'external_payload' => $passengerData['raw_payload'] ?? null,
                     ]
                 );
 
@@ -419,6 +493,191 @@ class NotificationTaskController extends Controller
                 'success' => false,
                 'message' => 'Failed to queue notifications: ' . $e->getMessage(),
             ], 500);
+        }
+    }
+
+    protected function stationCache(): \Illuminate\Support\Collection
+    {
+        if ($this->stationsCache === null) {
+            $this->stationsCache = Station::all();
+        }
+
+        return $this->stationsCache;
+    }
+
+    protected function refreshStationCache(Station $station): void
+    {
+        if ($this->stationsCache !== null) {
+            $this->stationsCache->push($station);
+        }
+    }
+
+    protected function resolveRoute(array $raceData): ?Route
+    {
+        $fromStation = $this->resolveStation($raceData, 'from');
+        $toStation = $this->resolveStation($raceData, 'to');
+
+        if (!$fromStation || !$toStation) {
+            return null;
+        }
+
+        $routeNumber = $raceData['route_number']
+            ?? $raceData['trip_number']
+            ?? $raceData['id']
+            ?? null;
+
+        $route = Route::firstOrCreate(
+            [
+                'departure_station_id' => $fromStation->id,
+                'arrival_station_id' => $toStation->id,
+            ],
+            [
+                'route_number' => $routeNumber,
+                'is_active' => false,
+            ]
+        );
+
+        if ($routeNumber && $route->route_number !== $routeNumber) {
+            $route->update(['route_number' => $routeNumber]);
+        }
+
+        return $route;
+    }
+
+    protected function resolveStation(array $raceData, string $direction): ?Station
+    {
+        $direction = strtolower($direction);
+
+        $idKeys = [
+            "{$direction}_station_external_id",
+            "{$direction}_station_id",
+            "{$direction}_external_id",
+            "{$direction}_id",
+            "{$direction}_station",
+        ];
+
+        if ($direction === 'from') {
+            $idKeys[] = 'from_id';
+            $idKeys[] = 'departure_station_id';
+        } else {
+            $idKeys[] = 'to_id';
+            $idKeys[] = 'arrival_station_id';
+        }
+
+        $nameKeys = [
+            $direction === 'from' ? 'route_start' : 'route_end',
+            "{$direction}_station_name",
+            "{$direction}_name",
+            "{$direction}_station",
+            $direction === 'from' ? 'departure_station_name' : 'arrival_station_name',
+        ];
+
+        $name = null;
+        foreach ($nameKeys as $key) {
+            if (!empty($raceData[$key])) {
+                $name = trim((string) $raceData[$key]);
+                break;
+            }
+        }
+
+        foreach ($idKeys as $key) {
+            if (!empty($raceData[$key])) {
+                $externalId = (string) $raceData[$key];
+
+                $station = Station::where('external_id', $externalId)->first();
+
+                if ($station) {
+                    if ($name && !$station->name) {
+                        $station->name = $name;
+                        $station->save();
+                        $this->refreshStationCache($station);
+                    }
+
+                    return $station;
+                }
+
+                $station = Station::create([
+                    'external_id' => $externalId,
+                    'name' => $name ?? "Станция {$externalId}",
+                    'code' => null,
+                    'city' => null,
+                    'region' => 'Сахалинская область',
+                    'is_active' => true,
+                ]);
+
+                $this->refreshStationCache($station);
+
+                return $station;
+            }
+        }
+
+        if ($name) {
+            $station = $this->findStationByName($name);
+
+            if ($station) {
+                return $station;
+            }
+
+            $station = Station::create([
+                'name' => $name,
+                'code' => null,
+                'city' => null,
+                'region' => 'Сахалинская область',
+                'is_active' => true,
+            ]);
+
+            $this->refreshStationCache($station);
+
+            return $station;
+        }
+
+        return null;
+    }
+
+    protected function findStationByName(string $name): ?Station
+    {
+        $normalized = mb_strtolower(trim($name));
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        $stations = $this->stationCache();
+
+        $exact = $stations->first(function (Station $station) use ($normalized) {
+            return mb_strtolower(trim($station->name)) === $normalized;
+        });
+
+        if ($exact) {
+            return $exact;
+        }
+
+        return $stations->first(function (Station $station) use ($normalized) {
+            $stationName = mb_strtolower(trim($station->name));
+
+            if ($stationName === '') {
+                return false;
+            }
+
+            return str_contains($normalized, $stationName) || str_contains($stationName, $normalized);
+        });
+    }
+
+    protected function parseRaceDateTime(?string $value): ?string
+    {
+        if (empty($value)) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value)->toDateTimeString();
+        } catch (\Exception $e) {
+            Log::warning('Failed to parse race datetime', [
+                'value' => $value,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
         }
     }
 

@@ -18,11 +18,15 @@ class StationController extends Controller
     }
 
     /**
-     * Получить список всех активных станций
+     * Получить список всех активных станций с external_id
+     * Возвращает только станции, которые имеют external_id (синхронизированы с API)
      */
     public function index(Request $request): JsonResponse
     {
         $stations = Station::active()
+            ->whereNotNull('external_id')
+            ->where('external_id', '!=', '')
+            ->where('external_id', '!=', '0')
             ->orderBy('name')
             ->get();
 

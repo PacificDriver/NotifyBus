@@ -135,6 +135,21 @@
             border-color: #2196F3;
         }
         
+        .trip-item.cancelled {
+            background: #fff5f5;
+            border-left: 4px solid #dc3545;
+        }
+        
+        .trip-item.cancelled:hover {
+            border-color: #dc3545;
+            background: #ffe0e0;
+        }
+        
+        .trip-item.cancelled.selected {
+            background: #ffe0e0;
+            border-color: #dc3545;
+        }
+        
         .passenger-list {
             max-height: 400px;
             overflow-y: auto;
@@ -220,16 +235,18 @@
             <div style="margin-bottom: 30px;">
                 <h3 style="margin-bottom: 15px; color: #555;">Шаг 1: Создать задачу на рассылку</h3>
                 <p style="color: #666; margin-bottom: 20px;">
-                    Введите название задачи для удобства поиска в истории рассылок.
+                    Название задачи будет сгенерировано автоматически на основе текущей даты и времени.
                 </p>
-                <div class="form-group">
-                    <label>Название задачи</label>
-                    <input type="text" v-model="taskTitle" placeholder="Например: Отмена рейсов 05.11.2025" style="padding: 12px; font-size: 1rem;">
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-success" @click="createTask" :disabled="creatingTask">
+                        <span v-if="creatingTask">⏳ Создание...</span>
+                        <span v-else>📝 Создать задачу</span>
+                    </button>
+                    <button class="btn btn-secondary" @click="loadStations" :disabled="loadingStations" style="background: #6c757d;">
+                        <span v-if="loadingStations">⏳ Загрузка...</span>
+                        <span v-else>🔄 Обновить список станций</span>
+                    </button>
                 </div>
-                <button class="btn btn-success" @click="createTask" :disabled="creatingTask || !taskTitle">
-                    <span v-if="creatingTask">⏳ Создание...</span>
-                    <span v-else>📝 Создать задачу</span>
-                </button>
             </div>
         </div>
         
@@ -271,7 +288,14 @@
             <!-- Выбор найденных рейсов -->
             <div v-if="races.length > 0" style="margin-top: 30px;">
                 <h4 style="margin-bottom: 15px; color: #555;">Шаг 3: Выбор отмененных рейсов</h4>
-                <p style="margin-bottom: 15px; color: #666;">Найдено отмененных рейсов: <strong>@{{ races.length }}</strong></p>
+                <div style="padding: 12px; background: #fff3cd; border-left: 4px solid #f08c00; border-radius: 4px; margin-bottom: 15px;">
+                    <p style="margin: 0; color: #856404;">
+                        <strong>ℹ️ Найдено отмененных рейсов: <span style="color: #c92a2a;">@{{ races.length }}</span></strong>
+                    </p>
+                    <p style="margin: 5px 0 0 0; font-size: 0.9rem; color: #856404;">
+                        Все найденные рейсы имеют статус <strong>active = false</strong> (отменены). Выберите рейсы для добавления в задачу.
+                    </p>
+                </div>
                 
                 <div style="margin-bottom: 15px;">
                     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px; background: #f8f9fa; border-radius: 6px;">
@@ -282,7 +306,7 @@
                 
                 <div class="grid" style="max-height: 400px; overflow-y: auto; padding: 10px;">
                     <div v-for="race in races" :key="race.id" 
-                         class="trip-item" 
+                         class="trip-item cancelled" 
                          :class="{ selected: selectedRaces.includes(race.id) }"
                          style="display: flex; align-items: flex-start; gap: 10px;">
                         <input type="checkbox" 
@@ -290,13 +314,21 @@
                                v-model="selectedRaces"
                                style="width: 18px; height: 18px; margin-top: 2px; cursor: pointer;">
                         <div style="flex: 1;">
-                            <strong>Рейс ID: @{{ race.id }}</strong>
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                <strong>Рейс ID: @{{ race.id }}</strong>
+                                <span class="badge badge-danger" style="font-size: 0.75rem; padding: 2px 8px;">
+                                    ❌ Отменен
+                                </span>
+                            </div>
                             <div style="margin-top: 8px; font-size: 0.9rem; color: #666;">
-                                <div>Отправление: @{{ formatDateTime(race.dt_depart) }}</div>
-                                <div>Прибытие: @{{ formatDateTime(race.dt_arrive) }}</div>
-                                <div>Часовой пояс: UTC+@{{ race.route_tz || 'N/A' }}</div>
-                                <div style="margin-top: 5px;">
-                                    <span class="badge badge-danger">Отменен</span>
+                                <div v-if="race.dt_depart" style="margin-bottom: 4px;">
+                                    <span style="color: #888;">🕐</span> <strong>Отправление:</strong> @{{ formatDateTime(race.dt_depart, race.route_tz) }}
+                                </div>
+                                <div v-if="race.dt_arrive" style="margin-bottom: 4px;">
+                                    <span style="color: #888;">🕐</span> <strong>Прибытие:</strong> @{{ formatDateTime(race.dt_arrive, race.route_tz) }}
+                                </div>
+                                <div v-if="race.route_tz !== undefined && race.route_tz !== null" style="margin-bottom: 4px;">
+                                    <span style="color: #888;">🌍</span> <strong>Часовой пояс:</strong> UTC+@{{ race.route_tz }}
                                 </div>
                             </div>
                         </div>
@@ -311,8 +343,34 @@
                 </div>
             </div>
             
-            <div v-if="races.length === 0 && searchPerformed" style="margin-top: 20px; padding: 20px; background: #fff3cd; border-radius: 8px; color: #856404;">
-                ℹ️ Отмененных рейсов не найдено для выбранных параметров
+            <!-- Сообщение, когда поиск выполнен, но рейсов не найдено -->
+            <div v-if="races.length === 0 && searchPerformed && !searching" style="margin-top: 20px; padding: 20px; background: #fff3cd; border-radius: 8px; color: #856404;">
+                <strong>ℹ️ Отмененных рейсов не найдено</strong>
+                <div style="margin-top: 10px; font-size: 0.9rem;">
+                    <p>Для выбранных параметров отмененных рейсов не найдено:</p>
+                    <ul style="margin-top: 8px; padding-left: 20px;">
+                        <li>Станция отправления: <strong>@{{ getStationName(searchForm.from) }}</strong></li>
+                        <li>Станция прибытия: <strong>@{{ getStationName(searchForm.to) }}</strong></li>
+                        <li>Дата: <strong>@{{ formatDate(searchForm.date) }}</strong></li>
+                    </ul>
+                    <p style="margin-top: 10px;">Попробуйте выбрать другую дату или другие станции.</p>
+                </div>
+            </div>
+            
+            <!-- Сообщение, когда станции не загружены -->
+            <div v-if="stations.length === 0" style="margin-top: 20px; padding: 20px; background: #ffe0e0; border-radius: 8px; color: #c92a2a;">
+                <strong>⚠️ Станции не загружены</strong>
+                <div style="margin-top: 10px; font-size: 0.9rem;">
+                    <p>Не удалось загрузить список станций. Возможные причины:</p>
+                    <ul style="margin-top: 8px; padding-left: 20px;">
+                        <li>API перевозчика недоступен</li>
+                        <li>Станции не синхронизированы</li>
+                        <li>Проблемы с настройками API</li>
+                    </ul>
+                    <p style="margin-top: 10px;">
+                        <strong>Решение:</strong> Обратитесь к администратору для проверки настроек API Перевозчика и синхронизации станций.
+                    </p>
+                </div>
             </div>
         </div>
         
@@ -430,7 +488,6 @@
             data() {
                 return {
                     stations: [],
-                    taskTitle: '', // Название задачи для создания
                     searchForm: {
                         from: '',
                         to: '',
@@ -443,6 +500,7 @@
                     currentTask: null,
                     creatingTask: false,
                     addingRaces: false,
+                    loadingStations: false,
                     templates: [],
                     passengers: [], // Список всех загруженных пассажиров
                     selectedPassengers: [], // Выбранные ID пассажиров для отправки
@@ -481,6 +539,7 @@
             },
             methods: {
                 async loadStations() {
+                    this.loadingStations = true;
                     try {
                         const response = await fetch('/api/stations', {
                             headers: {
@@ -492,19 +551,34 @@
                         });
                         
                         if (!response.ok) {
-                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                            const errorData = await response.json().catch(() => ({}));
+                            throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
                         }
                         
                         const data = await response.json();
                         if (data.success && data.data) {
-                            this.stations = data.data;
+                            this.stations = Array.isArray(data.data) ? data.data : [];
+                            
+                            if (this.stations.length === 0) {
+                                console.warn('Список станций пуст. Возможно, нужно синхронизировать станции.');
+                            } else {
+                                console.log(`Загружено станций: ${this.stations.length}`);
+                            }
                         } else {
                             throw new Error(data.message || 'Не удалось загрузить станции');
                         }
                     } catch (error) {
                         console.error('Error loading stations:', error);
-                        alert('⚠️ В текущий момент сервис недоступен.\n\nОшибка загрузки станций. Обратитесь к администратору для проверки настроек API Перевозчика.');
+                        
+                        let errorMessage = '⚠️ Ошибка загрузки станций\n\n';
+                        errorMessage += error.message || 'Неизвестная ошибка';
+                        errorMessage += '\n\n💡 Совет: Обратитесь к администратору для проверки настроек API Перевозчика.';
+                        errorMessage += '\n\nЕсли станции не загружаются, возможно, нужно синхронизировать их в админ-панели.';
+                        
+                        alert(errorMessage);
                         this.stations = [];
+                    } finally {
+                        this.loadingStations = false;
                     }
                 },
                 
@@ -573,28 +647,65 @@
                         
                         if (!response.ok) {
                             // Сервер вернул ошибку с деталями в JSON
-                            throw new Error(data.message || data.error || `HTTP ${response.status}: ${response.statusText}`);
+                            // Сохраняем данные для обработки в catch блоке
+                            const error = new Error(data.message || data.error || `HTTP ${response.status}: ${response.statusText}`);
+                            error.responseData = data; // Сохраняем данные ответа
+                            throw error;
                         }
                         
-                        if (data.success && data.data) {
+                        if (data.success) {
+                            // Проверяем, что data.data существует и является массивом
+                            const racesData = Array.isArray(data.data) ? data.data : [];
+                            
+                            if (racesData.length === 0) {
+                                // Если массив пустой, это нормально - просто нет отмененных рейсов
+                                this.races = [];
+                                this.searchPerformed = true;
+                                return; // Выходим, не показывая ошибку
+                            }
+                            
                             // API уже возвращает только отмененные рейсы (active = false)
-                            this.races = data.data;
+                            // Но для надежности дополнительно фильтруем на фронтенде
+                            this.races = racesData.filter(race => {
+                                // Проверяем, что рейс отменен (active = false)
+                                // Также проверяем наличие обязательных полей
+                                return race.active === false && 
+                                       race.id && 
+                                       (race.dt_depart || race.dt_arrive);
+                            });
+                            
                             if (this.races.length === 0) {
-                                alert('Отмененных рейсов не найдено для выбранных параметров');
+                                // Если после фильтрации ничего не осталось
+                                if (racesData.length > 0) {
+                                    console.warn('Найдены рейсы, но ни один не соответствует критериям отмененных (active = false)');
+                                    // Показываем информационное сообщение
+                                    const nonCancelledCount = racesData.length;
+                                    console.log(`Найдено рейсов: ${nonCancelledCount}, но все они активны (active = true)`);
+                                }
+                                // Не показываем alert, так как это не ошибка - просто нет отмененных рейсов
+                            } else {
+                                console.log(`Найдено отмененных рейсов: ${this.races.length}`);
+                                
+                                // Проверяем, что все рейсы действительно отменены
+                                const allCancelled = this.races.every(race => race.active === false);
+                                if (!allCancelled) {
+                                    console.warn('Внимание: некоторые рейсы в списке не отменены (active !== false)');
+                                }
                             }
                         } else {
-                            throw new Error(data.message || 'Неизвестная ошибка при поиске рейсов');
+                            // Если success = false, но нет ошибки в response.ok
+                            throw new Error(data.message || data.error || 'Неизвестная ошибка при поиске рейсов');
                         }
                     } catch (error) {
                         console.error('Error searching races:', error);
                         
                         // Получаем детали ошибки из ответа
                         let errorMessage = 'Неизвестная ошибка';
+                        const errorData = error.responseData || {}; // Используем сохраненные данные из ответа
                         
                         // Пытаемся получить детали из ответа сервера
                         if (response && !response.ok) {
-                            // response.json() уже был вызван выше, используем сообщение из error
-                            errorMessage = error.message || `HTTP ${response.status}: ${response.statusText}`;
+                            errorMessage = error.message || errorData.message || errorData.error || `HTTP ${response.status}: ${response.statusText}`;
                         } else if (error.message) {
                             errorMessage = error.message;
                         }
@@ -603,8 +714,16 @@
                         let userMessage = '⚠️ Ошибка подключения к API Перевозчика\n\n';
                         userMessage += errorMessage + '\n\n';
                         
+                        // Добавляем детали из ответа сервера, если есть
+                        if (errorData.details) {
+                            userMessage += 'Детали: ' + errorData.details + '\n\n';
+                        }
+                        
                         // Добавляем подсказки в зависимости от типа ошибки
-                        if (errorMessage.includes('400') || errorMessage.includes('Некорректный запрос')) {
+                        if (errorMessage.includes('external_id') || errorMessage.includes('синхронизированы') || errorMessage.includes('синхронизируйте')) {
+                            userMessage += '💡 Совет: Станции должны быть синхронизированы с API перевозчика.\n';
+                            userMessage += 'Перейдите в админ-панель → Настройки → API Перевозчика и нажмите кнопку "Обновить станции".';
+                        } else if (errorMessage.includes('400') || errorMessage.includes('Некорректный запрос')) {
                             userMessage += '💡 Совет: Проверьте правильность выбранных станций и даты.';
                         } else if (errorMessage.includes('401') || errorMessage.includes('авторизован')) {
                             userMessage += '💡 Совет: Проверьте настройки API ключа в админ-панели.';
@@ -614,6 +733,11 @@
                             userMessage += '💡 Совет: Проверьте доступность сервера API и настройки сети.';
                         } else {
                             userMessage += '💡 Совет: Обратитесь к администратору для проверки настроек API.';
+                        }
+                        
+                        // Добавляем hint из ответа сервера, если есть
+                        if (errorData.hint) {
+                            userMessage += '\n\n' + errorData.hint;
                         }
                         
                         alert(userMessage);
@@ -633,14 +757,10 @@
                 },
                 
                 async createTask() {
-                    if (!this.taskTitle.trim()) {
-                        alert('Введите название задачи');
-                        return;
-                    }
-                    
                     this.creatingTask = true;
                     
                     try {
+                        // Название задачи генерируется автоматически на сервере
                         const response = await fetch('/api/notification-tasks', {
                             method: 'POST',
                             headers: {
@@ -650,9 +770,7 @@
                                 'X-Requested-With': 'XMLHttpRequest',
                             },
                             credentials: 'include',
-                            body: JSON.stringify({
-                                title: this.taskTitle,
-                            }),
+                            body: JSON.stringify({}),
                         });
                         
                         if (!response.ok) {
@@ -664,7 +782,6 @@
                         if (data.success) {
                             this.currentTask = data.data;
                             alert(`✅ Задача создана успешно!\n\nНазвание: ${data.data.title}\nID: ${data.data.id}\n\nТеперь найдите отмененные рейсы.`);
-                            // НЕ очищаем форму - оператор продолжит работу с задачей
                         } else {
                             throw new Error(data.message || 'Не удалось создать задачу');
                         }
@@ -819,18 +936,60 @@
                         this.selectedPassengers = [];
                     }
                 },
-                formatDateTime(datetime) {
+                getStationName(stationId) {
+                    if (!stationId) return 'Не выбрана';
+                    const station = this.stations.find(s => s.id == stationId);
+                    return station ? station.name : `ID: ${stationId}`;
+                },
+                
+                formatDate(dateString) {
+                    if (!dateString) return 'Не выбрана';
+                    try {
+                        const date = new Date(dateString);
+                        return date.toLocaleDateString('ru-RU', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric'
+                        });
+                    } catch (e) {
+                        return dateString;
+                    }
+                },
+                
+                formatDateTime(datetime, routeTz = null) {
                     if (!datetime) return 'N/A';
                     try {
-                        const date = new Date(datetime);
+                        let value = datetime;
+
+                        if (typeof value === 'string') {
+                            const trimmed = value.trim();
+                            if (trimmed && !/[Zz]|[+\-]\d\d:?\d\d$/.test(trimmed)) {
+                                value = trimmed.replace(' ', 'T') + 'Z';
+                            }
+                        }
+
+                        const date = new Date(value);
+
+                        if (Number.isNaN(date.getTime())) {
+                            return datetime;
+                        }
+                        
+                        const offset = Number.isFinite(routeTz) ? routeTz : 11;
+                        if (Number.isFinite(offset)) {
+                            date.setUTCHours(date.getUTCHours() + offset);
+                        }
+
                         return date.toLocaleString('ru-RU', {
                             day: '2-digit',
                             month: '2-digit',
                             year: 'numeric',
                             hour: '2-digit',
-                            minute: '2-digit'
+                            minute: '2-digit',
+                            second: '2-digit',
+                            timeZone: 'UTC' // Учитываем, что дата в UTC
                         });
                     } catch (e) {
+                        console.warn('Error formatting datetime:', datetime, e);
                         return datetime;
                     }
                 },

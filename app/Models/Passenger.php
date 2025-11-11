@@ -17,15 +17,36 @@ class Passenger extends Model
         'middle_name',
         'email',
         'phone',
+        'birth_date',
+        'document_type',
+        'document_series',
+        'document_number',
+        'document_issued_at',
         'seat_number',
         'ticket_price',
+        'ticket_service_fee',
+        'ticket_total_price',
+        'ticket_discount',
         'ticket_status',
+        'passenger_type',
+        'external_order_id',
+        'ticket_uid',
+        'ticket_number',
+        'ticket_purchased_at',
+        'external_payload',
     ];
 
     protected function casts(): array
     {
         return [
             'ticket_price' => 'decimal:2',
+            'ticket_service_fee' => 'decimal:2',
+            'ticket_total_price' => 'decimal:2',
+            'ticket_discount' => 'decimal:2',
+            'birth_date' => 'date',
+            'document_issued_at' => 'date',
+            'ticket_purchased_at' => 'datetime',
+            'external_payload' => 'array',
         ];
     }
 

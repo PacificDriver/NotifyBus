@@ -97,10 +97,18 @@ class CarrierApiService
         while ($attempt <= $maxRetries) {
             try {
                 // Логируем запрос (без секретных данных)
+                $headers = $this->getHeaders();
+                $sanitizedHeaders = $headers;
+                if (isset($sanitizedHeaders['x-access-token'])) {
+                    $token = $sanitizedHeaders['x-access-token'];
+                    $sanitizedHeaders['x-access-token'] = substr($token, 0, 20) . '...' . substr($token, -10) . ' (length: ' . strlen($token) . ')';
+                }
+                
                 Log::info("Carrier API request", [
                     'method' => $method,
                     'endpoint' => $endpoint,
                     'url' => $url,
+                    'headers' => $sanitizedHeaders,
                     'params' => $this->sanitizeParams($params),
                     'attempt' => $attempt + 1,
                 ]);
@@ -362,58 +370,301 @@ class CarrierApiService
             
             $stations = $this->getStations();
             $syncedCount = 0;
+            
+            // Сначала получаем список всех станций БД без external_id для последующего сопоставления
+            $stationsWithoutExternalId = Station::where(function($query) {
+                $query->whereNull('external_id')
+                    ->orWhere('external_id', '')
+                    ->orWhere('external_id', '0');
+            })->get();
+            
+            Log::info("Stations without external_id before sync", [
+                'count' => $stationsWithoutExternalId->count(),
+                'stations' => $stationsWithoutExternalId->map(function($s) {
+                    return ['id' => $s->id, 'name' => $s->name];
+                })->toArray(),
+            ]);
 
         foreach ($stations as $stationData) {
             // Получаем external_id из ответа API (это ID станции из внешнего API)
             $externalId = $stationData['id'] ?? $stationData['external_id'] ?? null;
             
-            if (!$externalId) {
-                Log::warning("Station without external_id skipped", [
+            if (empty($externalId) || $externalId === '0' || $externalId === 0) {
+                Log::warning("Station without valid external_id skipped", [
                     'station_data' => $stationData,
+                    'external_id' => $externalId,
                 ]);
                 continue;
             }
 
-            // Ищем по external_id, если не найдено - по коду
-            $searchBy = ['external_id' => (string)$externalId];
+            $externalId = (string)$externalId; // Приводим к строке для консистентности
+            
+            // Получаем название станции для поиска
+            $stationName = $stationData['name'] 
+                ?? $stationData['title'] 
+                ?? $stationData['station_name'] 
+                ?? null;
 
-            Station::updateOrCreate(
-                $searchBy,
-                [
-                    'external_id' => (string)$externalId,
-                    'name' => $stationData['name'] 
-                        ?? $stationData['title'] 
-                        ?? $stationData['station_name'] 
-                        ?? 'Unknown',
-                    'code' => (string)($stationData['code'] 
-                        ?? $stationData['station_code'] 
-                        ?? $externalId),
-                    'city' => $stationData['city'] 
-                        ?? $stationData['city_name'] 
-                        ?? $stationData['settlement'] 
-                        ?? null,
-                    'region' => $stationData['region'] 
-                        ?? $stationData['region_name'] 
-                        ?? 'Сахалинская область',
-                    'latitude' => $stationData['latitude'] 
-                        ?? $stationData['lat'] 
-                        ?? $stationData['coord_lat'] 
-                        ?? null,
-                    'longitude' => $stationData['longitude'] 
-                        ?? $stationData['lng'] 
-                        ?? $stationData['lon'] 
-                        ?? $stationData['coord_lng'] 
-                        ?? null,
-                    'is_active' => $stationData['is_active'] 
-                        ?? $stationData['active'] 
-                        ?? true,
-                ]
-            );
+            // Ищем станцию по external_id, если не найдено - по имени (для обновления существующих станций без external_id)
+            $station = Station::where('external_id', $externalId)->first();
+            
+            // Если не найдено по external_id, ищем по имени (для обновления существующих станций)
+            if (!$station && $stationName) {
+                // Нормализуем название из API для сравнения
+                $normalizedName = trim(mb_strtolower($stationName));
+                
+                // Сначала точное совпадение
+                $station = Station::where('name', $stationName)->first();
+                
+                // Если не найдено, ищем по нормализованному названию (на случай небольших различий в пробелах/регистре)
+                if (!$station) {
+                    $station = Station::whereRaw('LOWER(TRIM(name)) = ?', [$normalizedName])->first();
+                }
+                
+                // Если все еще не найдено, ищем по частичному совпадению (API название содержит название из БД)
+                // Например: "Южно-Сахалинск" в БД и "Южно-Сахалинск, ЖД Вокзал" в API
+                if (!$station) {
+                    // Используем список станций без external_id, полученный в начале синхронизации
+                    // Но фильтруем только те, которые все еще не имеют external_id (на случай, если они были обновлены)
+                    $availableStationsWithoutExternalId = $stationsWithoutExternalId->filter(function($s) {
+                        return empty($s->external_id) || $s->external_id === '0' || $s->external_id === '';
+                    });
+                    
+                    Log::debug("Searching for stations without external_id", [
+                        'api_name' => $stationName,
+                        'normalized_api' => $normalizedName,
+                        'available_stations_count' => $availableStationsWithoutExternalId->count(),
+                        'stations_list' => $availableStationsWithoutExternalId->map(function($s) {
+                            return ['id' => $s->id, 'name' => $s->name, 'external_id' => $s->external_id];
+                        })->toArray(),
+                    ]);
+                    
+                    foreach ($availableStationsWithoutExternalId as $dbStation) {
+                        // Проверяем, что станция все еще не имеет external_id (могла быть обновлена в этой же итерации)
+                        if (!empty($dbStation->external_id) && $dbStation->external_id !== '0' && $dbStation->external_id !== '') {
+                            continue;
+                        }
+                        
+                        $dbStationName = trim(mb_strtolower($dbStation->name));
+                        
+                        // Проверяем, содержит ли название из API название из БД
+                        // Например: "южно-сахалинск, жд вокзал" содержит "южно-сахалинск"
+                        // Используем mb_strpos для корректной работы с кириллицей
+                        $position = mb_strpos($normalizedName, $dbStationName);
+                        $contains = $position !== false;
+                        
+                        Log::debug("Checking station match", [
+                            'api_name' => $stationName,
+                            'db_name' => $dbStation->name,
+                            'normalized_api' => $normalizedName,
+                            'normalized_db' => $dbStationName,
+                            'contains' => $contains,
+                            'position' => $position,
+                            'db_name_length' => mb_strlen($dbStationName),
+                        ]);
+                        
+                        if ($contains) {
+                            Log::debug("Found potential match", [
+                                'api_name' => $stationName,
+                                'db_name' => $dbStation->name,
+                                'normalized_api' => $normalizedName,
+                                'normalized_db' => $dbStationName,
+                                'db_name_length' => mb_strlen($dbStationName),
+                                'position' => $position,
+                            ]);
+                            
+                            // Дополнительная проверка: название из БД должно быть достаточно длинным
+                            // Минимум 5 символов для коротких названий, чтобы избежать ложных совпадений
+                            // Используем mb_strlen для корректной работы с кириллицей
+                            $dbNameLength = mb_strlen($dbStationName);
+                            if ($dbNameLength >= 5) {
+                                $station = $dbStation;
+                                Log::info("Station found by partial name match (reverse search)", [
+                                    'found_name' => $station->name,
+                                    'api_name' => $stationName,
+                                    'external_id' => $externalId,
+                                    'match_type' => 'api_contains_db',
+                                    'db_name_length' => $dbNameLength,
+                                    'normalized_api' => $normalizedName,
+                                    'normalized_db' => $dbStationName,
+                                ]);
+                                break;
+                            } else {
+                                Log::debug("Match rejected: db_name too short", [
+                                    'db_name' => $dbStation->name,
+                                    'db_name_length' => $dbNameLength,
+                                ]);
+                            }
+                        }
+                    }
+                }
+                
+                // Если все еще не найдено, ищем по ключевым словам
+                if (!$station && mb_strlen($normalizedName) > 5) {
+                    // Ищем станции без external_id, которые содержат ключевые слова из названия API
+                    $keywords = explode(' ', $normalizedName);
+                    $keywords = array_filter($keywords, function($word) {
+                        return mb_strlen($word) > 3; // Только слова длиннее 3 символов
+                    });
+                    
+                    if (!empty($keywords)) {
+                        // Используем список станций без external_id, полученный в начале синхронизации
+                        $availableStationsWithoutExternalId = $stationsWithoutExternalId->filter(function($s) {
+                            return empty($s->external_id) || $s->external_id === '0' || $s->external_id === '';
+                        });
+                        
+                        foreach ($availableStationsWithoutExternalId as $dbStation) {
+                            // Проверяем, что станция все еще не имеет external_id
+                            if (!empty($dbStation->external_id) && $dbStation->external_id !== '0' && $dbStation->external_id !== '') {
+                                continue;
+                            }
+                            
+                            $dbStationName = mb_strtolower($dbStation->name);
+                            $matches = 0;
+                            
+                            foreach ($keywords as $keyword) {
+                                if (mb_strpos($dbStationName, $keyword) !== false) {
+                                    $matches++;
+                                }
+                            }
+                            
+                            // Если хотя бы одно ключевое слово совпадает
+                            if ($matches > 0 && $matches >= count($keywords) * 0.5) {
+                                $station = $dbStation;
+                                Log::info("Station found by keyword match", [
+                                    'found_name' => $station->name,
+                                    'api_name' => $stationName,
+                                    'external_id' => $externalId,
+                                    'matches' => $matches,
+                                    'keywords' => $keywords,
+                                ]);
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                // Логируем, если станция все еще не найдена
+                if (!$station) {
+                    Log::warning("Station not found in database during sync", [
+                        'api_name' => $stationName,
+                        'external_id' => $externalId,
+                        'hint' => 'Station will be created as new',
+                    ]);
+                }
+            }
+
+            // Подготавливаем данные для обновления/создания
+            $stationDataToSave = [
+                'external_id' => $externalId,
+                'name' => $stationName ?? 'Unknown',
+                'code' => (string)($stationData['code'] 
+                    ?? $stationData['station_code'] 
+                    ?? $externalId),
+                'city' => $stationData['city'] 
+                    ?? $stationData['city_name'] 
+                    ?? $stationData['settlement'] 
+                    ?? null,
+                'region' => $stationData['region'] 
+                    ?? $stationData['region_name'] 
+                    ?? 'Сахалинская область',
+                'latitude' => $stationData['latitude'] 
+                    ?? $stationData['lat'] 
+                    ?? $stationData['coord_lat'] 
+                    ?? null,
+                'longitude' => $stationData['longitude'] 
+                    ?? $stationData['lng'] 
+                    ?? $stationData['lon'] 
+                    ?? $stationData['coord_lng'] 
+                    ?? null,
+                'is_active' => $stationData['is_active'] 
+                    ?? $stationData['active'] 
+                    ?? true,
+            ];
+
+            if ($station) {
+                // Обновляем существующую станцию
+                $station->update($stationDataToSave);
+                Log::debug("Updated station", [
+                    'id' => $station->id,
+                    'name' => $station->name,
+                    'external_id' => $station->external_id,
+                ]);
+            } else {
+                // Создаем новую станцию
+                $station = Station::create($stationDataToSave);
+                Log::debug("Created station", [
+                    'id' => $station->id,
+                    'name' => $station->name,
+                    'external_id' => $station->external_id,
+                ]);
+            }
 
             $syncedCount++;
         }
 
-        Log::info("Synced {$syncedCount} stations from carrier API");
+        // Проверяем, остались ли станции без external_id и удаляем их
+        $stationsWithoutExternalId = Station::where(function($query) {
+            $query->whereNull('external_id')
+                ->orWhere('external_id', '')
+                ->orWhere('external_id', '0');
+        })->get();
+        
+        $deletedCount = 0;
+        $skippedCount = 0;
+        
+        foreach ($stationsWithoutExternalId as $station) {
+            // Проверяем, используется ли станция в маршрутах
+            $usedInRoutes = \App\Models\Route::where(function($query) use ($station) {
+                $query->where('departure_station_id', $station->id)
+                    ->orWhere('arrival_station_id', $station->id);
+            })->exists();
+            
+            if ($usedInRoutes) {
+                // Станция используется в маршрутах, не удаляем
+                $skippedCount++;
+                Log::warning("Station without external_id skipped (used in routes)", [
+                    'station_id' => $station->id,
+                    'station_name' => $station->name,
+                ]);
+            } else {
+                // Станция не используется, можно удалить
+                $station->delete();
+                $deletedCount++;
+                Log::info("Station without external_id deleted", [
+                    'station_id' => $station->id,
+                    'station_name' => $station->name,
+                ]);
+            }
+        }
+        
+        if ($stationsWithoutExternalId->count() > 0) {
+            Log::info("Stations without external_id processed", [
+                'total' => $stationsWithoutExternalId->count(),
+                'deleted' => $deletedCount,
+                'skipped' => $skippedCount,
+                'reason_skipped' => 'used in routes',
+            ]);
+        }
+
+        // Подсчитываем общее количество станций в БД после удаления
+        $totalStationsInDb = Station::count();
+        
+        // Подсчитываем оставшиеся станции без external_id (если они были пропущены из-за использования в маршрутах)
+        $remainingStationsWithoutExternalId = Station::where(function($query) {
+            $query->whereNull('external_id')
+                ->orWhere('external_id', '')
+                ->orWhere('external_id', '0');
+        })->count();
+        
+        Log::info("Synced {$syncedCount} stations from carrier API", [
+            'total_synced' => $syncedCount,
+            'stations_deleted' => $deletedCount,
+            'stations_skipped' => $skippedCount,
+            'remaining_stations_without_external_id' => $remainingStationsWithoutExternalId,
+            'total_stations_in_db' => $totalStationsInDb,
+            'stations_from_api' => count($stations),
+        ]);
         
         return $syncedCount;
         

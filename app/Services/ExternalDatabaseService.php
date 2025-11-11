@@ -2,9 +2,10 @@
 
 namespace App\Services;
 
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Config;
 
 /**
  * Сервис для подключения к внешней базе данных сайта (PostgreSQL)
@@ -16,30 +17,31 @@ class ExternalDatabaseService
     
     public function __construct()
     {
-        // Получаем настройки подключения к внешней БД из настроек
-        $this->configureConnection();
+        // Не настраиваем подключение сразу - оно будет настроено при первом использовании
+        // Это позволяет контроллерам создаваться даже если настройки внешней БД не заданы
     }
 
     /**
      * Настроить подключение к внешней БД
+     * Вызывается автоматически при первом использовании методов, требующих подключения
      */
     protected function configureConnection(): void
     {
+        // Если подключение уже настроено, не настраиваем повторно
+        if ($this->connectionName) {
+            return;
+        }
+
         try {
-            // Сначала берем из .env, затем из БД (настройки), затем из config
-            $host = env('EXTERNAL_DB_HOST') 
-                ?? $this->getSetting('host', config('database.external.host'));
-            $port = env('EXTERNAL_DB_PORT') 
-                ?? $this->getSetting('port', config('database.external.port', 5432));
-            $database = env('EXTERNAL_DB_DATABASE') 
-                ?? $this->getSetting('database', config('database.external.database'));
-            $username = env('EXTERNAL_DB_USERNAME') 
-                ?? $this->getSetting('username', config('database.external.username'));
-            $password = env('EXTERNAL_DB_PASSWORD') 
-                ?? $this->getSetting('password', config('database.external.password'));
+            // Берем настройки ТОЛЬКО из БД, без fallback на env
+            $host = $this->getSetting('host');
+            $port = $this->getSetting('port', 5432);
+            $database = $this->getSetting('database');
+            $username = $this->getSetting('username');
+            $password = $this->getSetting('password');
 
             if (empty($host) || empty($database) || empty($username)) {
-                throw new \Exception('External database connection parameters not configured');
+                throw new \Exception('External database connection parameters not configured. Please configure external database settings in admin panel.');
             }
 
             // Создаем временное подключение
@@ -59,11 +61,18 @@ class ExternalDatabaseService
                 'sslmode' => 'prefer',
             ]);
 
+            Log::info("External database connection configured", [
+                'host' => $host,
+                'database' => $database,
+                'username' => $username,
+            ]);
+
         } catch (\Exception $e) {
-            Log::error("Failed to configure external database connection", [
+            Log::warning("Failed to configure external database connection", [
                 'error' => $e->getMessage(),
             ]);
-            throw $e;
+            // Не выбрасываем исключение - это позволяет сервису создаваться
+            // Исключение будет выброшено при попытке использовать методы, требующие подключения
         }
     }
 
@@ -92,13 +101,16 @@ class ExternalDatabaseService
             return [];
         }
 
+        // Настраиваем подключение при первом использовании
+        $this->configureConnection();
+
         if (!$this->connectionName) {
-            throw new \Exception('External database connection not configured');
+            throw new \Exception('Настройки внешней базы данных не заданы. Пожалуйста, настройте подключение к внешней БД в админ-панели (раздел "Внешняя БД").');
         }
 
         try {
             // Получаем имя таблицы билетов из настроек
-            $ticketsTable = $this->getSetting('tickets_table', 'tickets');
+            $ticketsTable = $this->getSetting('tickets_table', 'carrier_tickets');
             $raceIdColumn = $this->getSetting('race_id_column', 'race_id');
             
             // Запрос к внешней БД
@@ -121,46 +133,136 @@ class ExternalDatabaseService
 
             $result = [];
             foreach ($passengers as $ticket) {
+                $payload = $this->convertPayload($ticket);
+                $raceIdentifier = $payload[$raceIdColumn] ?? $payload['race_id'] ?? null;
+
                 // Нормализуем данные в единый формат
                 $result[] = [
-                    'external_booking_id' => $ticket->id ?? $ticket->booking_id ?? $ticket->ticket_id ?? null,
-                    'race_id' => $ticket->$raceIdColumn ?? $ticket->race_id ?? null,
-                    'first_name' => $ticket->passenger_first_name 
-                        ?? $ticket->first_name 
-                        ?? $ticket->fname 
-                        ?? $ticket->passenger_name
-                        ?? '',
-                    'last_name' => $ticket->passenger_last_name 
-                        ?? $ticket->last_name 
-                        ?? $ticket->surname 
-                        ?? $ticket->lname
-                        ?? '',
-                    'middle_name' => $ticket->passenger_middle_name 
-                        ?? $ticket->middle_name 
-                        ?? $ticket->patronymic 
-                        ?? $ticket->mname
-                        ?? null,
-                    'email' => $ticket->email 
-                        ?? $ticket->e_mail 
-                        ?? $ticket->mail
-                        ?? null,
-                    'phone' => $ticket->phone 
-                        ?? $ticket->phone_number 
-                        ?? $ticket->tel 
-                        ?? $ticket->mobile
-                        ?? null,
-                    'seat_number' => $ticket->seat_number 
-                        ?? $ticket->seat 
-                        ?? $ticket->place
-                        ?? null,
-                    'ticket_price' => $ticket->price 
-                        ?? $ticket->ticket_price 
-                        ?? $ticket->cost 
-                        ?? $ticket->amount
-                        ?? null,
-                    'ticket_status' => $this->normalizeTicketStatus(
-                        $ticket->status ?? $ticket->ticket_status ?? 'booked'
+                    'external_booking_id' => $this->stringify(
+                        $payload['id']
+                        ?? $payload['booking_id']
+                        ?? $payload['ticket_id']
+                        ?? $payload['external_booking_id']
+                        ?? $payload['ticket_uid']
+                        ?? null
                     ),
+                    'external_order_id' => $payload['order_id']
+                        ?? $payload['external_order_id']
+                        ?? null,
+                    'race_id' => $this->stringify($raceIdentifier),
+                    'passenger_type' => $payload['passenger_type']
+                        ?? $payload['category']
+                        ?? $payload['passenger_category']
+                        ?? null,
+                    'first_name' => $payload['passenger_first_name']
+                        ?? $payload['first_name']
+                        ?? $payload['fname']
+                        ?? $payload['passenger_name']
+                        ?? '',
+                    'last_name' => $payload['passenger_last_name']
+                        ?? $payload['last_name']
+                        ?? $payload['surname']
+                        ?? $payload['lname']
+                        ?? '',
+                    'middle_name' => $payload['passenger_middle_name']
+                        ?? $payload['middle_name']
+                        ?? $payload['patronymic']
+                        ?? $payload['mname']
+                        ?? null,
+                    'email' => $payload['email']
+                        ?? $payload['e_mail']
+                        ?? $payload['mail']
+                        ?? null,
+                    'phone' => $this->sanitizePhone(
+                        $payload['phone']
+                        ?? $payload['phone_number']
+                        ?? $payload['tel']
+                        ?? $payload['mobile']
+                        ?? null
+                    ),
+                    'birth_date' => $this->normalizeDate(
+                        $payload['birth_date']
+                        ?? $payload['birthday']
+                        ?? $payload['date_of_birth']
+                        ?? null
+                    ),
+                    'document_type' => $payload['document_type']
+                        ?? $payload['doc_type']
+                        ?? $payload['document']
+                        ?? null,
+                    'document_series' => $this->stringify(
+                        $payload['document_series']
+                        ?? $payload['doc_series']
+                        ?? $payload['document_series_code']
+                        ?? null
+                    ),
+                    'document_number' => $this->stringify(
+                        $payload['document_number']
+                        ?? $payload['doc_number']
+                        ?? $payload['document_no']
+                        ?? null
+                    ),
+                    'document_issued_at' => $this->normalizeDate(
+                        $payload['document_issued_at']
+                        ?? $payload['doc_issued_at']
+                        ?? $payload['document_date']
+                        ?? null
+                    ),
+                    'seat_number' => $this->stringify(
+                        $payload['seat_number']
+                        ?? $payload['seat']
+                        ?? $payload['place']
+                        ?? null
+                    ),
+                    'ticket_price' => $this->normalizeDecimal(
+                        $payload['price']
+                        ?? $payload['ticket_price']
+                        ?? $payload['cost']
+                        ?? $payload['amount']
+                        ?? null
+                    ),
+                    'ticket_service_fee' => $this->normalizeDecimal(
+                        $payload['service_fee']
+                        ?? $payload['agency_fee']
+                        ?? $payload['commission']
+                        ?? null
+                    ),
+                    'ticket_total_price' => $this->normalizeDecimal(
+                        $payload['total_amount']
+                        ?? $payload['ticket_total']
+                        ?? $payload['price_total']
+                        ?? $payload['paid_amount']
+                        ?? null
+                    ),
+                    'ticket_discount' => $this->normalizeDecimal(
+                        $payload['discount']
+                        ?? $payload['ticket_discount']
+                        ?? null
+                    ),
+                    'ticket_status' => $this->normalizeTicketStatus(
+                        $payload['status'] ?? $payload['ticket_status'] ?? 'booked'
+                    ),
+                    'ticket_uid' => $this->stringify(
+                        $payload['ticket_uid']
+                        ?? $payload['ticket_hash']
+                        ?? $payload['eticket']
+                        ?? $payload['e_ticket']
+                        ?? null
+                    ),
+                    'ticket_number' => $this->stringify(
+                        $payload['ticket_number']
+                        ?? $payload['ticket_no']
+                        ?? $payload['ticket']
+                        ?? null
+                    ),
+                    'ticket_purchased_at' => $this->normalizeDateTime(
+                        $payload['ticket_purchase_date']
+                        ?? $payload['purchased_at']
+                        ?? $payload['purchase_date']
+                        ?? $payload['created_at']
+                        ?? null
+                    ),
+                    'raw_payload' => $payload,
                 ];
             }
 
@@ -204,11 +306,172 @@ class ExternalDatabaseService
     }
 
     /**
+     * Преобразовать запись билета в массив
+     */
+    protected function convertPayload($ticket): array
+    {
+        if (is_array($ticket)) {
+            return $ticket;
+        }
+
+        if (is_object($ticket)) {
+            $decoded = json_decode(json_encode($ticket), true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+
+            return (array) $ticket;
+        }
+
+        return [];
+    }
+
+    /**
+     * Преобразовать значение в строку
+     */
+    protected function stringify($value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format('Y-m-d H:i:s');
+        }
+
+        $string = trim((string) $value);
+
+        return $string === '' ? null : $string;
+    }
+
+    /**
+     * Нормализовать десятичное значение в формат 0.00
+     */
+    protected function normalizeDecimal($value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value)) {
+            $value = str_replace(["\u{00A0}", ' '], '', $value);
+            $value = str_replace(',', '.', $value);
+        }
+
+        if (!is_numeric($value)) {
+            return null;
+        }
+
+        return number_format((float) $value, 2, '.', '');
+    }
+
+    /**
+     * Нормализовать дату в формат Y-m-d
+     */
+    protected function normalizeDate($value): ?string
+    {
+        $carbon = $this->parseCarbon($value);
+
+        return $carbon ? $carbon->format('Y-m-d') : null;
+    }
+
+    /**
+     * Нормализовать дату/время в формат Y-m-d H:i:s
+     */
+    protected function normalizeDateTime($value): ?string
+    {
+        $carbon = $this->parseCarbon($value);
+
+        return $carbon ? $carbon->format('Y-m-d H:i:s') : null;
+    }
+
+    /**
+     * Попытаться распарсить дату из различных форматов
+     */
+    protected function parseCarbon($value): ?Carbon
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if ($value instanceof Carbon) {
+            return $value;
+        }
+
+        if ($value instanceof \DateTimeInterface) {
+            return Carbon::instance($value);
+        }
+
+        if (is_numeric($value)) {
+            try {
+                return Carbon::createFromTimestamp((int) $value);
+            } catch (\Exception) {
+                return null;
+            }
+        }
+
+        $value = trim((string) $value);
+
+        $formats = [
+            'Y-m-d H:i:s',
+            'Y-m-d',
+            'd.m.Y H:i:s',
+            'd.m.Y',
+            'd-m-Y',
+            'd/m/Y',
+            'd/m/Y H:i:s',
+            'Y-m-d\TH:i:sP',
+            'Y-m-d\TH:i:s',
+        ];
+
+        foreach ($formats as $format) {
+            try {
+                return Carbon::createFromFormat($format, $value);
+            } catch (\Exception) {
+                continue;
+            }
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Exception) {
+            return null;
+        }
+    }
+
+    /**
+     * Очистить номер телефона от лишних символов
+     */
+    protected function sanitizePhone(?string $phone): ?string
+    {
+        $phone = $this->stringify($phone);
+
+        if (!$phone) {
+            return null;
+        }
+
+        $digits = preg_replace('/[^\d+]/', '', $phone);
+
+        if (!$digits) {
+            return null;
+        }
+
+        if (str_starts_with($digits, '8') && strlen($digits) === 11) {
+            $digits = '7' . substr($digits, 1);
+        }
+
+        return $digits;
+    }
+
+    /**
      * Проверить подключение к внешней БД
      */
     public function checkConnection(): bool
     {
         try {
+            // Настраиваем подключение при проверке
+            $this->configureConnection();
+
             if (!$this->connectionName) {
                 return false;
             }

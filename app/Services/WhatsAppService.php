@@ -21,19 +21,17 @@ class WhatsAppService
 
     public function __construct()
     {
-        // Сначала берем из .env, затем из БД (настройки), затем из config
-        $this->apiUrl = env('WAPPI_API_URL') 
-            ?? $this->getSetting('api_url', config('services.whatsapp.api_url', 'https://api.wappi.pro'));
-        $this->apiToken = env('WAPPI_API_TOKEN') 
-            ?? $this->getSetting('api_token', config('services.whatsapp.api_token'));
-        $this->profileId = env('WAPPI_PROFILE_ID') 
-            ?? $this->getSetting('profile_id', config('services.whatsapp.profile_id'));
-        $this->dailyLimit = (int) ($this->getSetting('daily_limit', config('services.whatsapp.daily_limit', 1000)));
-        $this->useAsync = (bool) ($this->getSetting('use_async', config('services.whatsapp.use_async', true)));
+        // Берем настройки ТОЛЬКО из БД, без fallback на env/config
+        // По умолчанию используем https://wappi.pro (не api.wappi.pro) согласно документации
+        $this->apiUrl = $this->getSetting('api_url', 'https://wappi.pro');
+        $this->apiToken = $this->getSetting('api_token');
+        $this->profileId = $this->getSetting('profile_id');
+        $this->dailyLimit = (int) ($this->getSetting('daily_limit', 1000));
+        $this->useAsync = (bool) ($this->getSetting('use_async', true));
     }
 
     /**
-     * Получить настройку из БД или config
+     * Получить настройку из БД
      */
     protected function getSetting(string $key, $default = null)
     {
@@ -42,7 +40,10 @@ class WhatsAppService
             $setting = \App\Models\Setting::get($fullKey);
             return $setting !== null ? $setting : $default;
         } catch (\Exception $e) {
-            // Если таблица settings еще не создана, используем config
+            Log::warning("Failed to get WhatsApp setting from DB", [
+                'key' => $fullKey,
+                'error' => $e->getMessage(),
+            ]);
             return $default;
         }
     }
@@ -98,24 +99,46 @@ class WhatsAppService
      */
     protected function sendSync(string $to, string $message, array $metadata = []): array
     {
-        $endpoint = '/api/v1/sendMessage';
+        // Согласно документации Wappi.pro: POST /api/sync/message/send
+        $endpoint = '/api/sync/message/send';
         
-        // profile_id передается как query параметр согласно документации Wappi.pro
-        $url = $this->apiUrl . $endpoint . '?profile_id=' . urlencode($this->profileId);
+        // Формируем URL с profile_id как query параметр согласно документации Wappi.pro
+        $url = rtrim($this->apiUrl, '/') . $endpoint;
         
-        // Wappi.pro использует Bearer token для авторизации
-        $authHeader = str_starts_with($this->apiToken, 'Bearer ') 
-            ? $this->apiToken 
-            : 'Bearer ' . $this->apiToken;
+        // Wappi.pro использует Authorization header с токеном (без Bearer префикса)
+        // Токен передается напрямую в заголовке Authorization
+        $authToken = str_starts_with($this->apiToken, 'Bearer ') 
+            ? substr($this->apiToken, 7) 
+            : $this->apiToken;
         
-        $response = Http::withHeaders([
-            'Authorization' => $authHeader,
-            'Content-Type' => 'application/json',
-            'Accept' => 'application/json',
-        ])->post($url, [
+        // Согласно документации Wappi.pro:
+        // - Токен передается в заголовке Authorization
+        // - profile_id передается как query параметр
+        // - to и body передаются в теле запроса
+        $fullUrl = $url . '?profile_id=' . urlencode($this->profileId);
+        
+        Log::info("Sending WhatsApp message (sync)", [
+            'url' => $fullUrl,
             'to' => $to,
-            'body' => $message,
+            'profile_id' => $this->profileId,
+            'has_token' => !empty($authToken),
         ]);
+        
+        // Отключаем проверку SSL для Wappi.pro из-за проблем с сертификатом
+        // Согласно документации Wappi.pro: поле называется "recipient", не "to"
+        // Формат: {"recipient": "79115576362", "body": "Сообщение"}
+        // Номер должен быть просто в формате 79115576362 (без @c.us)
+        $normalizedTo = str_replace('@c.us', '', $to); // Убираем @c.us если есть
+        
+        $response = Http::withoutVerifying()
+            ->withHeaders([
+                'Authorization' => $authToken, // Токен в заголовке Authorization
+                'Accept' => 'application/json', // Согласно документации
+            ])
+            ->post($fullUrl, [
+                'recipient' => $normalizedTo, // Поле называется "recipient", не "to"
+                'body' => $message,
+            ]);
 
         if ($response->successful()) {
             $this->incrementDailyCounter();
@@ -163,24 +186,44 @@ class WhatsAppService
      */
     protected function sendAsync(string $to, string $message, array $metadata = []): array
     {
-        $endpoint = '/api/v1/sendMessageAsync';
+        // Согласно документации Wappi.pro: POST /api/async/message/send
+        $endpoint = '/api/async/message/send';
         
-        // profile_id передается как query параметр согласно документации Wappi.pro
-        $url = $this->apiUrl . $endpoint . '?profile_id=' . urlencode($this->profileId);
+        // Формируем URL согласно документации Wappi.pro
+        $url = rtrim($this->apiUrl, '/') . $endpoint;
         
-        // Wappi.pro использует Bearer token для авторизации
-        $authHeader = str_starts_with($this->apiToken, 'Bearer ') 
-            ? $this->apiToken 
-            : 'Bearer ' . $this->apiToken;
+        // Wappi.pro использует Authorization header с токеном (без Bearer префикса)
+        $authToken = str_starts_with($this->apiToken, 'Bearer ') 
+            ? substr($this->apiToken, 7) 
+            : $this->apiToken;
         
-        $response = Http::withHeaders([
-            'Authorization' => $authHeader,
-            'Content-Type' => 'application/json',
-            'Accept' => 'application/json',
-        ])->post($url, [
+        // Согласно документации Wappi.pro:
+        // - Токен передается в заголовке Authorization
+        // - profile_id передается как query параметр
+        // - to и body передаются в теле запроса
+        $fullUrl = $url . '?profile_id=' . urlencode($this->profileId);
+        
+        Log::info("Sending WhatsApp message (async)", [
+            'url' => $fullUrl,
             'to' => $to,
-            'body' => $message,
+            'profile_id' => $this->profileId,
+            'has_token' => !empty($authToken),
         ]);
+        
+        // Отключаем проверку SSL для Wappi.pro из-за проблем с сертификатом
+        // Согласно документации Wappi.pro: поле называется "recipient", не "to"
+        // Номер должен быть просто в формате 79115576362 (без @c.us)
+        $normalizedTo = str_replace('@c.us', '', $to); // Убираем @c.us если есть
+        
+        $response = Http::withoutVerifying()
+            ->withHeaders([
+                'Authorization' => $authToken, // Токен в заголовке Authorization
+                'Accept' => 'application/json', // Согласно документации
+            ])
+            ->post($fullUrl, [
+                'recipient' => $normalizedTo, // Поле называется "recipient", не "to"
+                'body' => $message,
+            ]);
 
         if ($response->successful()) {
             $this->incrementDailyCounter();
@@ -316,25 +359,38 @@ class WhatsAppService
     public function checkProfileStatus(): array
     {
         if (empty($this->apiToken) || empty($this->profileId)) {
-            throw new \Exception('WhatsApp API token or profile_id is not configured');
+            throw new \Exception('WhatsApp API token or profile_id is not configured. Please configure in admin panel.');
         }
 
         try {
-            $endpoint = '/api/v1/getProfileStatus';
+            // Согласно документации Wappi.pro: GET /api/sync/get/status
+            // Получить статус и настройки профиля
+            $endpoint = '/api/sync/get/status';
             
-            // profile_id передается как query параметр
-            $url = $this->apiUrl . $endpoint . '?profile_id=' . urlencode($this->profileId);
+            // Формируем URL согласно документации Wappi.pro
+            $url = rtrim($this->apiUrl, '/') . $endpoint;
             
-            // Wappi.pro использует Bearer token для авторизации
-            $authHeader = str_starts_with($this->apiToken, 'Bearer ') 
-                ? $this->apiToken 
-                : 'Bearer ' . $this->apiToken;
+            // Wappi.pro использует Authorization header с токеном (без Bearer префикса)
+            $authToken = str_starts_with($this->apiToken, 'Bearer ') 
+                ? substr($this->apiToken, 7) 
+                : $this->apiToken;
             
-            $response = Http::withHeaders([
-                'Authorization' => $authHeader,
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json',
-            ])->get($url);
+            Log::info("Checking WhatsApp profile status", [
+                'url' => $url,
+                'profile_id' => $this->profileId,
+                'has_token' => !empty($authToken),
+            ]);
+            
+            // Отключаем проверку SSL для Wappi.pro из-за проблем с сертификатом
+            // Согласно документации: profile_id передается как query параметр
+            $response = Http::withoutVerifying()
+                ->withHeaders([
+                    'Authorization' => $authToken, // Токен в заголовке Authorization
+                    'Accept' => 'application/json', // Согласно документации
+                ])
+                ->get($url, [
+                    'profile_id' => $this->profileId, // profile_id как query параметр
+                ]);
 
             if ($response->successful()) {
                 $responseData = $response->json();

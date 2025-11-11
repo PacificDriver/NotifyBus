@@ -17,7 +17,15 @@ class VerifyWappiWebhook
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $webhookSecret = config('services.whatsapp.webhook_secret');
+        // Получаем webhook secret из БД (настройки WhatsApp)
+        try {
+            $webhookSecret = \App\Models\Setting::get('whatsapp_webhook_secret');
+        } catch (\Exception $e) {
+            Log::warning("Failed to get webhook secret from DB", [
+                'error' => $e->getMessage(),
+            ]);
+            $webhookSecret = null;
+        }
         
         // Если секрет не настроен, пропускаем проверку (для разработки)
         if (empty($webhookSecret)) {

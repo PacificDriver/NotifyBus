@@ -264,7 +264,6 @@
                 <button class="tab active" onclick="switchTab('whatsapp')">📱 WhatsApp</button>
                 <button class="tab" onclick="switchTab('email')">✉️ Email</button>
                 <button class="tab" onclick="switchTab('carrier')">🚌 API Перевозчика</button>
-                <button class="tab" onclick="switchTab('external_db')">🗄️ Внешняя БД</button>
                 <button class="tab" onclick="switchTab('notification')">🔔 Уведомления</button>
             </div>
 
@@ -317,6 +316,22 @@
                     <div class="btn-group">
                         <button type="submit" class="btn btn-primary">💾 Сохранить настройки</button>
                         <button type="button" class="btn btn-success" onclick="testWhatsApp()">🔍 Проверить подключение</button>
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #ddd;">
+                        <h4 style="margin-bottom: 15px;">📤 Тестовая отправка сообщения</h4>
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 1;">
+                                <label for="whatsapp_test_phone">Номер телефона получателя</label>
+                                <input type="text" id="whatsapp_test_phone" placeholder="79959640099" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                <small>Введите номер телефона в формате 79959640099 (без +)</small>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label for="whatsapp_test_message">Текст сообщения</label>
+                                <input type="text" id="whatsapp_test_message" value="Тестовое сообщение от системы уведомлений" placeholder="Текст сообщения" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="testSendWhatsAppMessage()" style="margin-top: 10px;">📨 Отправить тестовое сообщение</button>
                     </div>
                 </form>
             </div>
@@ -411,60 +426,6 @@
                 </form>
             </div>
 
-            <!-- External DB Settings -->
-            <div id="external_db-tab" class="tab-content">
-                <h2>Настройки внешней базы данных</h2>
-                <p style="margin-bottom: 20px; color: #666;">
-                    Настройки подключения к внешней базе данных PostgreSQL для загрузки пассажиров по ID рейсов.
-                </p>
-                <form id="external_db-form">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="external_db_host">Host</label>
-                            <input type="text" id="external_db_host" name="host" placeholder="localhost">
-                        </div>
-                        <div class="form-group">
-                            <label for="external_db_port">Port</label>
-                            <input type="number" id="external_db_port" name="port" value="5432" placeholder="5432">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="external_db_database">Database</label>
-                            <input type="text" id="external_db_database" name="database" placeholder="database_name">
-                        </div>
-                        <div class="form-group">
-                            <label for="external_db_username">Username</label>
-                            <input type="text" id="external_db_username" name="username" placeholder="postgres">
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="external_db_password">Password</label>
-                        <input type="password" id="external_db_password" name="password" placeholder="Пароль">
-                        <small>Пароль будет сохранен в базе данных с шифрованием</small>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="external_db_tickets_table">Таблица билетов</label>
-                            <input type="text" id="external_db_tickets_table" name="tickets_table" value="tickets" placeholder="tickets">
-                            <small>Название таблицы с билетами/пассажирами</small>
-                        </div>
-                        <div class="form-group">
-                            <label for="external_db_race_id_column">Колонка ID рейса</label>
-                            <input type="text" id="external_db_race_id_column" name="race_id_column" value="race_id" placeholder="race_id">
-                            <small>Название колонки с ID рейса (external_id)</small>
-                        </div>
-                    </div>
-
-                    <div class="btn-group">
-                        <button type="submit" class="btn btn-primary">💾 Сохранить настройки</button>
-                    </div>
-                </form>
-            </div>
-
             <!-- Notification Settings -->
             <div id="notification-tab" class="tab-content">
                 <h2>Настройки уведомлений</h2>
@@ -531,7 +492,6 @@
                     fillForm('whatsapp', data.data.whatsapp || {});
                     fillForm('email', data.data.email || {});
                     fillForm('carrier_api', data.data.carrier_api || {});
-                    fillForm('external_db', data.data.external_db || {});
                     fillForm('notification', data.data.notification || {});
                 }
             } catch (error) {
@@ -577,11 +537,6 @@
         document.getElementById('notification-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             await saveSettings('notification', new FormData(e.target));
-        });
-
-        document.getElementById('external_db-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            await saveSettings('external_db', new FormData(e.target));
         });
 
         async function saveSettings(group, formData) {
@@ -638,12 +593,25 @@
             const form = document.getElementById('whatsapp-form');
             const formData = new FormData(form);
             const settings = {};
+            
+            // Собираем только непустые значения и не замаскированные
             formData.forEach((value, key) => {
-                settings[key] = value;
+                // Пропускаем пустые значения
+                if (value && value.trim() !== '') {
+                    // Пропускаем замаскированные значения (токены и пароли)
+                    if (!value.startsWith('***') && !value.startsWith('tok***')) {
+                        settings[key] = value;
+                    }
+                    // Если значение замаскировано, не отправляем его - сервер возьмет из БД
+                }
             });
 
             const checkbox = document.getElementById('whatsapp_use_async');
-            settings.use_async = checkbox ? checkbox.checked : false;
+            if (checkbox) {
+                settings.use_async = checkbox.checked;
+            }
+
+            console.log('Testing WhatsApp API connection with settings:', settings);
 
             showAlert('Проверка подключения...', 'info');
             
@@ -660,11 +628,18 @@
                     body: JSON.stringify({ settings }),
                 });
 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
+                console.log('Response status:', response.status);
 
                 const data = await response.json();
+                console.log('Response data:', data);
+
+                if (!response.ok) {
+                    // Если это не успешный ответ, но есть сообщение об ошибке
+                    if (data.message) {
+                        throw new Error(data.message);
+                    }
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
 
                 if (data.success) {
                     showAlert('✅ Подключение к WhatsApp API успешно!', 'success');
@@ -672,7 +647,71 @@
                     throw new Error(data.message || 'Неизвестная ошибка подключения');
                 }
             } catch (error) {
+                console.error('WhatsApp API test error:', error);
                 showAlert('⚠️ В текущий момент сервис недоступен.\n\nОшибка подключения к WhatsApp API: ' + error.message + '\n\nОбратитесь к администратору.', 'error');
+            }
+        }
+
+        async function testSendWhatsAppMessage() {
+            const testPhone = document.getElementById('whatsapp_test_phone').value.trim();
+            const testMessage = document.getElementById('whatsapp_test_message').value.trim();
+            
+            if (!testPhone) {
+                showAlert('Укажите номер телефона для тестовой отправки', 'error');
+                return;
+            }
+            
+            if (!testMessage) {
+                showAlert('Укажите текст сообщения', 'error');
+                return;
+            }
+            
+            // Получаем настройки из формы
+            const form = document.getElementById('whatsapp-form');
+            const formData = new FormData(form);
+            const settings = {};
+            
+            formData.forEach((value, key) => {
+                if (value && value.trim() !== '') {
+                    if (!value.startsWith('***') && !value.startsWith('tok***')) {
+                        settings[key] = value;
+                    }
+                }
+            });
+            
+            showAlert('Отправка тестового сообщения...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/settings/test/whatsapp/send`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        phone: testPhone,
+                        message: testMessage,
+                        settings: settings,
+                    }),
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.message || `HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                if (data.success) {
+                    showAlert('✅ Тестовое сообщение успешно отправлено на номер ' + testPhone + '!', 'success');
+                } else {
+                    throw new Error(data.message || 'Неизвестная ошибка отправки');
+                }
+            } catch (error) {
+                console.error('WhatsApp test send error:', error);
+                showAlert('⚠️ Ошибка отправки тестового сообщения:\n\n' + error.message + '\n\nОбратитесь к администратору.', 'error');
             }
         }
 
