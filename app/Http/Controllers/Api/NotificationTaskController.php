@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\SendNotificationJob;
-use App\Services\ExternalDatabaseService;
 use App\Models\MessageTemplate;
 use App\Models\Notification;
 use App\Models\NotificationTask;
@@ -20,13 +19,8 @@ use Illuminate\Support\Facades\Log;
 
 class NotificationTaskController extends Controller
 {
-    protected ExternalDatabaseService $externalDbService;
     protected ?\Illuminate\Support\Collection $stationsCache = null;
 
-    public function __construct(ExternalDatabaseService $externalDbService)
-    {
-        $this->externalDbService = $externalDbService;
-    }
     /**
      * Получить список задач на рассылку
      */
@@ -203,122 +197,58 @@ class NotificationTaskController extends Controller
             ], 400);
         }
 
+        // Извлекаем ID рейсов из races_data
+        $raceIds = array_map('strval', array_column($task->races_data, 'id'));
+
+        if (empty($raceIds)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No race IDs found in races_data',
+            ], 400);
+        }
+
         try {
-            // Извлекаем ID рейсов из races_data
-            $raceIds = array_column($task->races_data, 'id');
-            
-            if (empty($raceIds)) {
+            $trips = Trip::whereIn('external_id', $raceIds)
+                ->orWhereIn('id', $raceIds)
+                ->get();
+
+            if ($trips->isEmpty()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No race IDs found in races_data',
-                ], 400);
-            }
-
-            // Загружаем пассажиров из внешней БД
-            $passengersData = $this->externalDbService->getPassengersByRaceIds($raceIds);
-
-            // Сохраняем пассажиров и создаем/обновляем trips
-            $savedCount = 0;
-            $tripIds = [];
-
-            foreach ($passengersData as $passengerData) {
-                $raceId = $passengerData['race_id'] ?? null;
-                
-                if (!$raceId) {
-                    continue;
-                }
-
-                // Находим или создаем trip по external_id
-                $raceData = collect($task->races_data)->firstWhere('id', $raceId);
-                
-                if (!$raceData) {
-                    Log::warning("Race data not found for race_id", ['race_id' => $raceId]);
-                    continue;
-                }
-
-                $route = $this->resolveRoute($raceData);
-
-                if (!$route) {
-                    Log::warning('Route could not be resolved for race', [
-                        'race_id' => $raceId,
-                        'race_data' => $raceData,
-                    ]);
-                    continue;
-                }
-
-                $departureTime = $this->parseRaceDateTime($raceData['dt_depart'] ?? null);
-                $arrivalTime = $this->parseRaceDateTime($raceData['dt_arrive'] ?? null);
-
-                if (!$arrivalTime && $departureTime) {
-                    $arrivalTime = Carbon::parse($departureTime)->addMinutes(90)->toDateTimeString();
-                }
-
-                if (!$departureTime) {
-                    $departureTime = now()->toDateTimeString();
-                }
-
-                if (!$arrivalTime) {
-                    $arrivalTime = Carbon::parse($departureTime)->addMinutes(90)->toDateTimeString();
-                }
-
-                $trip = Trip::updateOrCreate(
-                    ['external_id' => (string) $raceId],
-                    [
-                        'route_id' => $route->id,
-                        'trip_number' => $raceData['trip_number']
-                            ?? $raceData['route_number']
-                            ?? $raceData['id']
-                            ?? $raceId,
-                        'departure_time' => $departureTime,
-                        'arrival_time' => $arrivalTime,
-                        'status' => 'cancelled',
-                        'delay_minutes' => $raceData['delay_minutes'] ?? null,
-                    ]
-                );
-
-                if (!in_array($trip->id, $tripIds)) {
-                    $tripIds[] = $trip->id;
-                }
-
-                // Сохраняем пассажира
-                Passenger::updateOrCreate(
-                    [
-                        'trip_id' => $trip->id,
-                        'external_booking_id' => $passengerData['external_booking_id'],
+                    'message' => 'No trips found in local database for provided race IDs',
+                    'data' => [
+                        'total_loaded' => 0,
+                        'saved_count' => 0,
+                        'valid_passengers_count' => 0,
+                        'trip_ids' => [],
                     ],
-                    [
-                        'first_name' => $passengerData['first_name'] ?? '',
-                        'last_name' => $passengerData['last_name'] ?? '',
-                        'middle_name' => $passengerData['middle_name'] ?? null,
-                        'email' => $passengerData['email'] ?? null,
-                        'phone' => $passengerData['phone'] ?? null,
-                        'birth_date' => $passengerData['birth_date'] ?? null,
-                        'document_type' => $passengerData['document_type'] ?? null,
-                        'document_series' => $passengerData['document_series'] ?? null,
-                        'document_number' => $passengerData['document_number'] ?? null,
-                        'document_issued_at' => $passengerData['document_issued_at'] ?? null,
-                        'seat_number' => $passengerData['seat_number'] ?? null,
-                        'ticket_price' => $passengerData['ticket_price'] ?? null,
-                        'ticket_service_fee' => $passengerData['ticket_service_fee'] ?? null,
-                        'ticket_total_price' => $passengerData['ticket_total_price'] ?? null,
-                        'ticket_discount' => $passengerData['ticket_discount'] ?? null,
-                        'ticket_status' => $passengerData['ticket_status'] ?? 'booked',
-                        'passenger_type' => $passengerData['passenger_type'] ?? null,
-                        'external_order_id' => $passengerData['external_order_id'] ?? null,
-                        'ticket_uid' => $passengerData['ticket_uid'] ?? null,
-                        'ticket_number' => $passengerData['ticket_number'] ?? null,
-                        'ticket_purchased_at' => $passengerData['ticket_purchased_at'] ?? null,
-                        'external_payload' => $passengerData['raw_payload'] ?? null,
-                    ]
-                );
-
-                $savedCount++;
+                ]);
             }
 
-            // Обновляем задачу с trip_ids и количеством получателей
-            $validPassengersCount = Passenger::whereIn('trip_id', $tripIds)
-                ->get()
-                ->filter(fn($p) => $p->canReceiveNotifications())
+            $tripIds = $trips->pluck('id')->unique()->values()->all();
+
+            $passengers = Passenger::whereIn('trip_id', $tripIds)->get();
+
+            if ($passengers->isEmpty()) {
+                $task->update([
+                    'trip_ids' => $tripIds,
+                    'total_recipients' => 0,
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No passengers found in local database for provided race IDs',
+                    'data' => [
+                        'total_loaded' => 0,
+                        'saved_count' => 0,
+                        'valid_passengers_count' => 0,
+                        'trip_ids' => $tripIds,
+                    ],
+                ]);
+            }
+
+            $validPassengersCount = $passengers
+                ->filter(fn ($passenger) => $passenger->canReceiveNotifications())
                 ->count();
 
             $task->update([
@@ -328,15 +258,14 @@ class NotificationTaskController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Passengers loaded successfully',
+                'message' => 'Passengers loaded from local database successfully',
                 'data' => [
-                    'total_loaded' => count($passengersData),
-                    'saved_count' => $savedCount,
+                    'total_loaded' => $passengers->count(),
+                    'saved_count' => $passengers->count(),
                     'valid_passengers_count' => $validPassengersCount,
                     'trip_ids' => $tripIds,
                 ],
             ]);
-
         } catch (\Exception $e) {
             Log::error("Failed to load passengers for task", [
                 'task_id' => $id,

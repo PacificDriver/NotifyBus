@@ -32,48 +32,79 @@ class ExternalDatabaseService
             return;
         }
 
-        try {
-            // Берем настройки ТОЛЬКО из БД, без fallback на env
-            $host = $this->getSetting('host');
-            $port = $this->getSetting('port', 5432);
-            $database = $this->getSetting('database');
-            $username = $this->getSetting('username');
-            $password = $this->getSetting('password');
-
-            if (empty($host) || empty($database) || empty($username)) {
-                throw new \Exception('External database connection parameters not configured. Please configure external database settings in admin panel.');
-            }
-
-            // Создаем временное подключение
-            $this->connectionName = 'external_db_' . uniqid();
-            
-            Config::set("database.connections.{$this->connectionName}", [
-                'driver' => 'pgsql',
-                'host' => $host,
-                'port' => $port,
-                'database' => $database,
-                'username' => $username,
-                'password' => $password,
-                'charset' => 'utf8',
-                'prefix' => '',
-                'prefix_indexes' => true,
-                'search_path' => 'public',
-                'sslmode' => 'prefer',
+        // 1. Поддерживаем использование заранее сконфигурированного подключения
+        //    (например, если в config/database.php добавлено соединение и его имя
+        //    сохранено в настройке external_db_connection_name)
+        $predefinedConnection = $this->getSetting('connection_name');
+        if ($predefinedConnection && Config::has("database.connections.{$predefinedConnection}")) {
+            $this->connectionName = $predefinedConnection;
+            Log::info("External database will use predefined connection", [
+                'connection' => $predefinedConnection,
             ]);
 
-            Log::info("External database connection configured", [
-                'host' => $host,
-                'database' => $database,
-                'username' => $username,
-            ]);
-
-        } catch (\Exception $e) {
-            Log::warning("Failed to configure external database connection", [
-                'error' => $e->getMessage(),
-            ]);
-            // Не выбрасываем исключение - это позволяет сервису создаваться
-            // Исключение будет выброшено при попытке использовать методы, требующие подключения
+            return;
         }
+
+        // 2. Пытаемся настроить отдельное подключение по реквизитам из настроек
+        $host = $this->getSetting('host');
+        $port = $this->getSetting('port', 5432);
+        $database = $this->getSetting('database');
+        $username = $this->getSetting('username');
+        $password = $this->getSetting('password');
+
+        if (!empty($host) && !empty($database) && !empty($username)) {
+            try {
+                // Создаем временное подключение
+                $this->connectionName = 'external_db_' . uniqid();
+
+                Config::set("database.connections.{$this->connectionName}", [
+                    'driver' => 'pgsql',
+                    'host' => $host,
+                    'port' => $port,
+                    'database' => $database,
+                    'username' => $username,
+                    'password' => $password,
+                    'charset' => 'utf8',
+                    'prefix' => '',
+                    'prefix_indexes' => true,
+                    'search_path' => 'public',
+                    'sslmode' => 'prefer',
+                ]);
+
+                Log::info("External database connection configured", [
+                    'host' => $host,
+                    'database' => $database,
+                    'username' => $username,
+                ]);
+
+                return;
+            } catch (\Exception $e) {
+                Log::warning("Failed to configure dedicated external database connection", [
+                    'error' => $e->getMessage(),
+                ]);
+                // Продолжаем и попробуем fallback на дефолтное подключение
+            }
+        }
+
+        // 3. Fallback: используем основное (дефолтное) подключение приложения
+        $defaultConnection = Config::get('database.default');
+
+        if ($defaultConnection && Config::has("database.connections.{$defaultConnection}")) {
+            $this->connectionName = $defaultConnection;
+
+            Log::info("External database falling back to default connection", [
+                'connection' => $defaultConnection,
+                'database' => Config::get("database.connections.{$defaultConnection}.database"),
+                'host' => Config::get("database.connections.{$defaultConnection}.host"),
+            ]);
+
+            return;
+        }
+
+        Log::warning("Failed to configure external database connection", [
+            'error' => 'External database connection parameters not configured and no default connection available.',
+        ]);
+        // Не выбрасываем исключение - оно будет выброшено при попытке фактического запроса
     }
 
     /**
