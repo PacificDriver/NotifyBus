@@ -18,34 +18,37 @@
         }
         
         .header {
-            background: #764ba2;
-            color: white;
+            background: white;
+            color: #3b5bdb;
             padding: 20px 40px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
         
         .header h1 {
-            font-size: 1.5rem;
+            font-size: 1.6rem;
+            color: #667eea;
         }
 
         .back-link {
-            color: white;
+            color: #5c7cfa;
             text-decoration: none;
-            padding: 8px 16px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 6px;
-            transition: background 0.3s;
+            padding: 10px 18px;
+            background: #edf2ff;
+            border-radius: 8px;
+            transition: all 0.3s;
+            font-weight: 600;
+            border: 1px solid #dbe4ff;
         }
 
         .back-link:hover {
-            background: rgba(255,255,255,0.3);
+            background: #dbe4ff;
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 30px auto;
             padding: 0 20px;
         }
@@ -59,11 +62,11 @@
         }
         
         .card h2 {
-            color: #333;
+            color: #2d334a;
             margin-bottom: 20px;
             font-size: 1.3rem;
-            border-bottom: 2px solid #764ba2;
-            padding-bottom: 10px;
+            border-bottom: 2px solid #e4e7ff;
+            padding-bottom: 12px;
         }
 
         .form-group {
@@ -73,7 +76,7 @@
         .form-group label {
             display: block;
             margin-bottom: 8px;
-            color: #333;
+            color: #333d52;
             font-weight: 600;
         }
 
@@ -82,8 +85,8 @@
         .form-group select {
             width: 100%;
             padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
+            border: 2px solid #e0e7ff;
+            border-radius: 8px;
             font-size: 0.95rem;
             transition: border-color 0.3s;
         }
@@ -92,13 +95,13 @@
         .form-group textarea:focus,
         .form-group select:focus {
             outline: none;
-            border-color: #764ba2;
+            border-color: #667eea;
         }
 
         .form-group small {
             display: block;
             margin-top: 5px;
-            color: #666;
+            color: #697089;
             font-size: 0.85rem;
         }
 
@@ -111,7 +114,7 @@
         .btn {
             padding: 12px 24px;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             font-size: 0.95rem;
             font-weight: 600;
             cursor: pointer;
@@ -119,24 +122,26 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
+            text-decoration: none;
         }
         
         .btn-primary {
-            background: #764ba2;
+            background: #667eea;
             color: white;
         }
         
         .btn-primary:hover {
-            background: #5f3a82;
+            background: #5568d3;
         }
 
         .btn-secondary {
-            background: #6c757d;
-            color: white;
+            background: #edf2ff;
+            color: #4453c8;
+            border: 1px solid #dbe4ff;
         }
 
         .btn-secondary:hover {
-            background: #5a6268;
+            background: #dbe4ff;
         }
 
         .btn-success {
@@ -248,6 +253,122 @@
         .hidden {
             display: none;
         }
+
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(20, 31, 54, 0.55);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            animation: fadeIn 0.25s ease;
+        }
+
+        .modal-overlay.visible {
+            display: flex;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(40px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-content {
+            background: #ffffff;
+            border-radius: 18px;
+            width: min(520px, 92vw);
+            overflow: hidden;
+            box-shadow: 0 25px 60px rgba(20, 31, 54, 0.25);
+            animation: slideUp 0.25s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 26px 32px;
+            color: #fff;
+        }
+
+        .modal-header.success {
+            background: linear-gradient(135deg, #64b5f6, #5c7cfa);
+        }
+
+        .modal-header.error {
+            background: linear-gradient(135deg, #ff6b6b, #f06595);
+        }
+
+        .modal-header.warning {
+            background: linear-gradient(135deg, #ffd43b, #ffa94d);
+            color: #3c2f00;
+        }
+
+        .modal-header.info {
+            background: linear-gradient(135deg, #74c0fc, #5f5af0);
+        }
+
+        .modal-icon {
+            font-size: 2.4rem;
+            line-height: 1;
+        }
+
+        .modal-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .modal-body {
+            padding: 28px 32px 12px;
+            color: #444;
+            font-size: 1rem;
+            line-height: 1.6;
+        }
+
+        .modal-body p + p {
+            margin-top: 12px;
+        }
+
+        .modal-footer {
+            padding: 18px 32px 26px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+
+        .modal-btn {
+            padding: 11px 26px;
+            border-radius: 10px;
+            border: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .modal-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 16px rgba(17, 68, 179, 0.16);
+        }
+
+        .modal-btn-primary {
+            background: #667eea;
+            color: #fff;
+        }
     </style>
 </head>
 <body>
@@ -255,18 +376,31 @@
         <h1>⚙️ Настройки системы</h1>
         <a href="/admin" class="back-link">← Назад к панели</a>
     </div>
+
+    <div id="modal-root" class="modal-overlay">
+        <div class="modal-content">
+            <div id="modal-header" class="modal-header info">
+                <div id="modal-icon" class="modal-icon">ℹ️</div>
+                <div id="modal-title" class="modal-title">Сообщение</div>
+            </div>
+            <div id="modal-body" class="modal-body"></div>
+            <div class="modal-footer">
+                <button type="button" class="modal-btn modal-btn-primary" id="modal-close">Понятно</button>
+            </div>
+        </div>
+    </div>
     
     <div class="container">
         <div id="alert-container"></div>
 
         <div class="card">
-            <div class="tabs">
-                <button class="tab active" onclick="switchTab('whatsapp')">📱 WhatsApp</button>
-                <button class="tab" onclick="switchTab('email')">✉️ Email</button>
-                <button class="tab" onclick="switchTab('carrier')">🚌 API Перевозчика</button>
-                <button class="tab" onclick="switchTab('notification')">🔔 Уведомления</button>
-                <button class="tab" onclick="switchTab('search_history')">🕘 История поиска</button>
-                <button class="tab" onclick="switchTab('operators')">👥 Операторы</button>
+                <div class="tabs">
+                    <button class="tab active" data-tab-target="whatsapp" onclick="switchTab('whatsapp', this)">📱 WhatsApp</button>
+                    <button class="tab" data-tab-target="email" onclick="switchTab('email', this)">✉️ Email</button>
+                    <button class="tab" data-tab-target="carrier" onclick="switchTab('carrier', this)">🚌 API Перевозчика</button>
+                    <button class="tab" data-tab-target="notification" onclick="switchTab('notification', this)">🔔 Уведомления</button>
+                    <button class="tab" data-tab-target="search_history" onclick="switchTab('search_history', this)">🕘 История поиска</button>
+                    <button class="tab" data-tab-target="operators" onclick="switchTab('operators', this)">👥 Операторы</button>
             </div>
 
             <!-- WhatsApp Settings -->
@@ -421,7 +555,7 @@
                     <div class="btn-group">
                         <button type="submit" class="btn btn-primary">💾 Сохранить настройки</button>
                         <button type="button" class="btn btn-success" onclick="testCarrierApi()">🔍 Проверить подключение</button>
-                        <button type="button" class="btn btn-secondary" onclick="syncStations()" id="sync-stations-btn">🔄 Обновить станции</button>
+                        <button type="button" class="btn btn-secondary" onclick="syncStations(this)" id="sync-stations-btn">🔄 Обновить станции</button>
                     </div>
                     
                     <div id="sync-stations-result" style="margin-top: 15px;"></div>
@@ -536,32 +670,126 @@
             initialized: false,
             list: [],
         };
+        const AVAILABLE_TABS = ['whatsapp', 'email', 'carrier', 'notification', 'search_history', 'operators'];
+        const DEFAULT_TAB = 'whatsapp';
+
+        const modalElements = {
+            root: null,
+            header: null,
+            icon: null,
+            title: null,
+            body: null,
+            closeBtn: null,
+            initialized: false
+        };
+
+        const modalIcons = {
+            success: '✅',
+            error: '⛔',
+            warning: '⚠️',
+            info: 'ℹ️'
+        };
+
+        function ensureModalElements() {
+            if (!modalElements.root) {
+                modalElements.root = document.getElementById('modal-root');
+                modalElements.header = document.getElementById('modal-header');
+                modalElements.icon = document.getElementById('modal-icon');
+                modalElements.title = document.getElementById('modal-title');
+                modalElements.body = document.getElementById('modal-body');
+                modalElements.closeBtn = document.getElementById('modal-close');
+            }
+            return modalElements.root && modalElements.header && modalElements.icon && modalElements.title && modalElements.body && modalElements.closeBtn;
+        }
+
+        function closeModal() {
+            if (ensureModalElements()) {
+                modalElements.root.classList.remove('visible');
+            }
+        }
+
+        function handleModalKeydown(event) {
+            if (event.key === 'Escape' && modalElements.root?.classList.contains('visible')) {
+                closeModal();
+            }
+        }
+
+        function showModal({ title = 'Сообщение', message = '', type = 'info' } = {}) {
+            if (!ensureModalElements()) {
+                console.warn('Modal container not ready', { title, message, type });
+                return;
+            }
+
+            const safeType = ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
+            modalElements.header.className = `modal-header ${safeType}`;
+            modalElements.icon.textContent = modalIcons[safeType] || modalIcons.info;
+            modalElements.title.textContent = title;
+            modalElements.body.innerHTML = (message ?? '').toString().replace(/\n/g, '<br>');
+            modalElements.root.classList.add('visible');
+        }
+
+        function initializeModal() {
+            if (!ensureModalElements() || modalElements.initialized) {
+                return;
+            }
+            modalElements.closeBtn.addEventListener('click', closeModal);
+            modalElements.root.addEventListener('click', (event) => {
+                if (event.target === modalElements.root) {
+                    closeModal();
+                }
+            });
+            window.addEventListener('keydown', handleModalKeydown);
+            modalElements.initialized = true;
+        }
 
         // Загрузка настроек при открытии страницы
         document.addEventListener('DOMContentLoaded', function() {
+            initializeModal();
+            applyInitialTabFromHash();
             loadSettings();
+            window.addEventListener('hashchange', applyInitialTabFromHash);
         });
 
-        function switchTab(tabName) {
-            // Скрыть все табы
-            document.querySelectorAll('.tab-content').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
+        function switchTab(tabName, triggerElement = null) {
+            activateTab(tabName, triggerElement);
+            if (window.location.hash !== `#${tabName}` && history.replaceState) {
+                history.replaceState(null, '', `#${tabName}`);
+            } else if (window.location.hash !== `#${tabName}`) {
+                window.location.hash = tabName;
+            }
+        }
 
-            // Показать выбранный таб
-            document.getElementById(`${tabName}-tab`).classList.add('active');
-            event.target.classList.add('active');
+        function activateTab(tabName, triggerElement = null) {
+            const targetTab = AVAILABLE_TABS.includes(tabName) ? tabName : DEFAULT_TAB;
 
-            if (tabName === 'search_history' && !historyState.initialized) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+
+            const content = document.getElementById(`${targetTab}-tab`);
+            if (content) {
+                content.classList.add('active');
+            }
+
+            const button = triggerElement || document.querySelector(`.tab[data-tab-target="${targetTab}"]`);
+            if (button) {
+                button.classList.add('active');
+            }
+
+            if (targetTab === 'search_history' && !historyState.initialized) {
                 initializeHistoryTab();
             }
 
-            if (tabName === 'operators' && !operatorsState.initialized) {
+            if (targetTab === 'operators' && !operatorsState.initialized) {
                 initializeOperatorsTab();
             }
+        }
+
+        function applyInitialTabFromHash() {
+            let hash = (window.location.hash || '').replace('#', '');
+            if (!AVAILABLE_TABS.includes(hash)) {
+                hash = DEFAULT_TAB;
+            }
+            activateTab(hash);
         }
 
         async function loadSettings() {
@@ -893,12 +1121,18 @@
             }
         }
 
-        function showAlert(message, type) {
-            const container = document.getElementById('alert-container');
-            container.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
-            setTimeout(() => {
-                container.innerHTML = '';
-            }, 5000);
+        function showAlert(message, type = 'info', title = '') {
+            const titles = {
+                success: 'Успешно',
+                error: 'Ошибка',
+                warning: 'Предупреждение',
+                info: 'Информация'
+            };
+            showModal({
+                type,
+                title: title || titles[type] || titles.info,
+                message
+            });
         }
 
         async function syncStations() {

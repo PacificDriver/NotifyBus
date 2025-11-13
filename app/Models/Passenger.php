@@ -11,6 +11,7 @@ class Passenger extends Model
 
     protected $fillable = [
         'trip_id',
+        'external_race_id',
         'external_booking_id',
         'first_name',
         'last_name',

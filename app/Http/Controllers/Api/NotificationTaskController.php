@@ -132,6 +132,12 @@ class NotificationTaskController extends Controller
             'races_data.*.route_tz' => 'nullable|integer',
             'races_data.*.dt_depart' => 'nullable|string',
             'races_data.*.dt_arrive' => 'nullable|string',
+            'races_data.*.from_station_id' => 'nullable|integer',
+            'races_data.*.to_station_id' => 'nullable|integer',
+            'races_data.*.from_station_name' => 'nullable|string',
+            'races_data.*.to_station_name' => 'nullable|string',
+            'races_data.*.route_number' => 'nullable|string',
+            'races_data.*.trip_number' => 'nullable|string',
         ]);
 
         // Получаем текущие рейсы
@@ -183,11 +189,19 @@ class NotificationTaskController extends Controller
     }
 
     /**
-     * Загрузить пассажиров из внешней БД для задачи
+     * Загрузить пассажиров для задачи из локальной БД
+     * Если Trip не существуют, создает их автоматически из races_data
      * POST /api/notification-tasks/{id}/load-passengers
      */
     public function loadPassengers(Request $request, int $id): JsonResponse
     {
+        Log::info("=== loadPassengers METHOD CALLED ===", [
+            'task_id' => $id,
+            'method' => $request->method(),
+            'url' => $request->fullUrl(),
+            'user_id' => $request->user()?->id,
+        ]);
+
         $task = NotificationTask::findOrFail($id);
 
         if (empty($task->races_data)) {
@@ -207,27 +221,90 @@ class NotificationTaskController extends Controller
             ], 400);
         }
 
-        try {
-            $trips = Trip::whereIn('external_id', $raceIds)
-                ->orWhereIn('id', $raceIds)
-                ->get();
+        Log::info("Loading passengers for task", [
+            'task_id' => $id,
+            'race_ids' => $raceIds,
+            'races_data_sample' => count($task->races_data) > 0 ? $task->races_data[0] : null,
+        ]);
 
+        try {
+            // Преобразуем race_ids в числа для поиска по id
+            $raceIdsAsNumbers = array_map(function($id) {
+                return is_numeric($id) ? (int)$id : null;
+            }, $raceIds);
+            $raceIdsAsNumbers = array_filter($raceIdsAsNumbers); // Убираем null
+
+            Log::info("Searching for trips", [
+                'task_id' => $id,
+                'race_ids_strings' => $raceIds,
+                'race_ids_numbers' => $raceIdsAsNumbers,
+            ]);
+
+            // Ищем существующие trips по external_id (строка) или по id (число)
+            $trips = Trip::where(function($query) use ($raceIds, $raceIdsAsNumbers) {
+                $query->whereIn('external_id', $raceIds);
+                if (!empty($raceIdsAsNumbers)) {
+                    $query->orWhereIn('id', $raceIdsAsNumbers);
+                }
+            })->get();
+            
+            Log::info("Found existing trips", [
+                'task_id' => $id,
+                'trips_count' => $trips->count(),
+                'trip_ids' => $trips->pluck('id')->toArray(),
+                'trip_external_ids' => $trips->pluck('external_id')->toArray(),
+            ]);
+
+            // Если trips не найдены, создаем их из races_data
             if ($trips->isEmpty()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No trips found in local database for provided race IDs',
-                    'data' => [
-                        'total_loaded' => 0,
-                        'saved_count' => 0,
-                        'valid_passengers_count' => 0,
-                        'trip_ids' => [],
-                    ],
+                Log::info("No trips found in database, creating from races_data", [
+                    'task_id' => $id,
+                    'race_ids' => $raceIds,
+                ]);
+
+                $createdTrips = [];
+                foreach ($task->races_data as $raceData) {
+                    $trip = $this->createTripFromRaceData($raceData);
+                    if ($trip) {
+                        $createdTrips[] = $trip;
+                    }
+                }
+
+                $trips = collect($createdTrips);
+
+                if ($trips->isEmpty()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Failed to create trips from races_data. Please check race data format.',
+                        'data' => [
+                            'total_loaded' => 0,
+                            'saved_count' => 0,
+                            'valid_passengers_count' => 0,
+                            'trip_ids' => [],
+                        ],
+                    ], 400);
+                }
+
+                Log::info("Successfully created trips from races_data", [
+                    'task_id' => $id,
+                    'created_count' => $trips->count(),
                 ]);
             }
 
             $tripIds = $trips->pluck('id')->unique()->values()->all();
 
+            Log::info("Searching for passengers", [
+                'task_id' => $id,
+                'trip_ids' => $tripIds,
+            ]);
+
             $passengers = Passenger::whereIn('trip_id', $tripIds)->get();
+
+            Log::info("Found passengers", [
+                'task_id' => $id,
+                'passengers_count' => $passengers->count(),
+                'passenger_ids' => $passengers->pluck('id')->take(10)->toArray(), // Первые 10 для примера
+            ]);
 
             if ($passengers->isEmpty()) {
                 $task->update([
@@ -237,7 +314,7 @@ class NotificationTaskController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'No passengers found in local database for provided race IDs',
+                    'message' => 'Trips created successfully, but no passengers found in local database for provided race IDs',
                     'data' => [
                         'total_loaded' => 0,
                         'saved_count' => 0,
@@ -277,6 +354,80 @@ class NotificationTaskController extends Controller
                 'success' => false,
                 'message' => 'Failed to load passengers: ' . $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Создать Trip из данных рейса
+     */
+    protected function createTripFromRaceData(array $raceData): ?Trip
+    {
+        try {
+            Log::info("Creating trip from race data", [
+                'race_id' => $raceData['id'] ?? 'unknown',
+                'race_data' => $raceData,
+            ]);
+
+            // Получаем или создаем маршрут
+            $route = $this->resolveRoute($raceData);
+            if (!$route) {
+                Log::warning("Failed to resolve route for race", [
+                    'race_id' => $raceData['id'] ?? 'unknown',
+                    'race_data' => $raceData,
+                ]);
+                return null;
+            }
+
+            // Парсим даты
+            $departureTime = $this->parseRaceDateTime($raceData['dt_depart'] ?? null);
+            $arrivalTime = $this->parseRaceDateTime($raceData['dt_arrive'] ?? null);
+
+            // Если нет времени отправления, используем текущую дату
+            if (!$departureTime) {
+                $departureTime = now()->toDateTimeString();
+            }
+
+            // Если нет времени прибытия, используем время отправления + 1 час
+            if (!$arrivalTime) {
+                $arrivalTime = Carbon::parse($departureTime)->addHours(1)->toDateTimeString();
+            }
+
+            // Проверяем, существует ли уже Trip с таким external_id
+            $existingTrip = Trip::where('external_id', $raceData['id'])->first();
+            if ($existingTrip) {
+                Log::info("Trip already exists, returning existing trip", [
+                    'trip_id' => $existingTrip->id,
+                    'external_id' => $raceData['id'],
+                ]);
+                return $existingTrip;
+            }
+
+            // Создаем Trip
+            $trip = Trip::create([
+                'route_id' => $route->id,
+                'trip_number' => $raceData['trip_number'] ?? $raceData['route_number'] ?? $raceData['id'],
+                'external_id' => $raceData['id'],
+                'departure_time' => $departureTime,
+                'arrival_time' => $arrivalTime,
+                'status' => ($raceData['active'] ?? true) ? 'scheduled' : 'cancelled',
+                'total_seats' => null,
+                'available_seats' => null,
+            ]);
+
+            Log::info("Created trip from race data", [
+                'trip_id' => $trip->id,
+                'external_id' => $trip->external_id,
+                'route_id' => $route->id,
+            ]);
+
+            return $trip;
+        } catch (\Exception $e) {
+            Log::error("Failed to create trip from race data", [
+                'race_id' => $raceData['id'] ?? 'unknown',
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return null;
         }
     }
 
@@ -450,10 +601,33 @@ class NotificationTaskController extends Controller
 
     protected function resolveRoute(array $raceData): ?Route
     {
-        $fromStation = $this->resolveStation($raceData, 'from');
-        $toStation = $this->resolveStation($raceData, 'to');
+        // Если есть прямые ссылки на станции из локальной БД, используем их
+        if (!empty($raceData['from_station_id']) && !empty($raceData['to_station_id'])) {
+            $fromStation = Station::find($raceData['from_station_id']);
+            $toStation = Station::find($raceData['to_station_id']);
+            
+            if ($fromStation && $toStation) {
+                Log::info("Using direct station IDs from race data", [
+                    'from_station_id' => $fromStation->id,
+                    'to_station_id' => $toStation->id,
+                ]);
+            } else {
+                Log::warning("Station IDs provided but stations not found", [
+                    'from_station_id' => $raceData['from_station_id'],
+                    'to_station_id' => $raceData['to_station_id'],
+                ]);
+                $fromStation = null;
+                $toStation = null;
+            }
+        } else {
+            $fromStation = $this->resolveStation($raceData, 'from');
+            $toStation = $this->resolveStation($raceData, 'to');
+        }
 
         if (!$fromStation || !$toStation) {
+            Log::error("Could not resolve stations for route", [
+                'race_data' => $raceData,
+            ]);
             return null;
         }
 
@@ -476,6 +650,12 @@ class NotificationTaskController extends Controller
         if ($routeNumber && $route->route_number !== $routeNumber) {
             $route->update(['route_number' => $routeNumber]);
         }
+
+        Log::info("Route resolved successfully", [
+            'route_id' => $route->id,
+            'from_station' => $fromStation->name,
+            'to_station' => $toStation->name,
+        ]);
 
         return $route;
     }

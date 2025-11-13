@@ -5,8 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Панель оператора</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
     <style>
         * {
             margin: 0;
@@ -186,6 +189,124 @@
             color: #c92a2a;
         }
         
+        /* Модальные окна */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(20, 31, 54, 0.55);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            animation: fadeIn 0.25s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(40px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-content {
+            background: #ffffff;
+            border-radius: 18px;
+            width: min(520px, 92vw);
+            overflow: hidden;
+            box-shadow: 0 25px 60px rgba(20, 31, 54, 0.25);
+            animation: slideUp 0.25s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 26px 32px;
+            color: #fff;
+        }
+
+        .modal-header.success {
+            background: linear-gradient(135deg, #64b5f6, #5c7cfa);
+        }
+
+        .modal-header.error {
+            background: linear-gradient(135deg, #ff6b6b, #f06595);
+        }
+
+        .modal-header.warning {
+            background: linear-gradient(135deg, #ffd43b, #ffa94d);
+            color: #3c2f00;
+        }
+
+        .modal-header.info {
+            background: linear-gradient(135deg, #74c0fc, #5f5af0);
+        }
+
+        .modal-icon {
+            font-size: 2.4rem;
+            line-height: 1;
+        }
+
+        .modal-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .modal-body {
+            padding: 28px 32px 12px;
+            color: #444;
+            font-size: 1rem;
+            line-height: 1.6;
+        }
+
+        .modal-body p + p {
+            margin-top: 12px;
+        }
+
+        .modal-footer {
+            padding: 18px 32px 26px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+
+        .modal-btn {
+            padding: 11px 26px;
+            border-radius: 10px;
+            border: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .modal-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 16px rgba(17, 68, 179, 0.16);
+        }
+
+        .modal-btn-primary {
+            background: #667eea;
+            color: #fff;
+        }
+
+        .modal-btn-secondary {
+            background: #f1f3f5;
+            color: #495057;
+        }
+
         .stats {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -215,7 +336,9 @@
 </head>
 <body>
     <div class="header">
-        <h1>📱 Панель оператора</h1>
+        <h1>
+            <a href="/" style="text-decoration: none; color: #667eea;">📱 Панель оператора</a>
+        </h1>
         <div style="display: flex; align-items: center; gap: 20px;">
             <span style="color: #666;">Оператор: <strong>{{ auth()->user()->name ?? 'Тестовый пользователь' }}</strong></span>
             <form method="POST" action="{{ route('logout') }}" style="margin: 0;">
@@ -228,6 +351,18 @@
     </div>
     
     <div id="app" class="container">
+        <div v-if="modal.visible" class="modal-overlay" @click.self="closeModal">
+            <div class="modal-content">
+                <div :class="['modal-header', modal.type || 'info']">
+                    <div class="modal-icon">@{{ modal.icon }}</div>
+                    <div class="modal-title">@{{ modal.title }}</div>
+                </div>
+                <div class="modal-body" v-html="modal.message"></div>
+                <div class="modal-footer">
+                    <button class="modal-btn modal-btn-primary" @click="closeModal">Понятно</button>
+                </div>
+            </div>
+        </div>
         <!-- Шаг 1: Создание задачи на рассылку -->
         <div class="card" v-if="!currentTask">
             <h2>📨 Создать рассылку уведомлений</h2>
@@ -241,10 +376,6 @@
                     <button class="btn btn-success" @click="createTask" :disabled="creatingTask">
                         <span v-if="creatingTask">⏳ Создание...</span>
                         <span v-else>📝 Создать задачу</span>
-                    </button>
-                    <button class="btn btn-secondary" @click="loadStations" :disabled="loadingStations" style="background: #6c757d;">
-                        <span v-if="loadingStations">⏳ Загрузка...</span>
-                        <span v-else>🔄 Обновить список станций</span>
                     </button>
                 </div>
             </div>
@@ -277,7 +408,12 @@
                     </div>
                     <div class="form-group">
                         <label>Дата рейса</label>
-                        <input type="date" v-model="searchForm.date" required>
+                        <input
+                            type="text"
+                            id="trip-date-picker"
+                            v-model="searchForm.date"
+                            required
+                            placeholder="Выберите дату рейса">
                     </div>
                 </div>
                 <button class="btn btn-primary" @click="searchCancelledRaces" :disabled="searching">
@@ -582,7 +718,15 @@
                     searchHistory: [],
                     historyFilter: 'all',
                     historyLoading: false,
-                    historyPagination: null
+                    historyPagination: null,
+                    datePickerInstance: null,
+                    modal: {
+                        visible: false,
+                        type: 'info',
+                        icon: 'ℹ️',
+                        title: 'Сообщение',
+                        message: ''
+                    }
                 }
             },
             computed: {
@@ -599,12 +743,95 @@
                     return Array.isArray(this.currentTask.races_data) ? this.currentTask.races_data.length : 0;
                 }
             },
+            watch: {
+                'searchForm.date'(newVal) {
+                    if (this.datePickerInstance && newVal) {
+                        const currentValue = this.datePickerInstance.input.value;
+                        if (currentValue !== newVal) {
+                            this.datePickerInstance.setDate(newVal, false);
+                        }
+                    }
+                },
+                currentTask() {
+                    this.$nextTick(() => this.initDatePicker());
+                },
+                currentTaskRacesCount(newVal) {
+                    if (newVal === 0) {
+                        this.$nextTick(() => this.initDatePicker());
+                    } else {
+                        this.destroyDatePicker();
+                    }
+                }
+            },
             mounted() {
                 this.loadStations();
                 this.loadTemplates();
                 this.loadSearchHistory();
+                window.addEventListener('keydown', this.handleKeydown);
+                this.$nextTick(() => this.initDatePicker());
+            },
+            beforeUnmount() {
+                window.removeEventListener('keydown', this.handleKeydown);
+                this.destroyDatePicker();
             },
             methods: {
+                closeModal() {
+                    this.modal.visible = false;
+                },
+                handleKeydown(event) {
+                    if (event.key === 'Escape' && this.modal.visible) {
+                        this.closeModal();
+                    }
+                },
+                showModal({ title = 'Сообщение', message = '', type = 'info' } = {}) {
+                    const allowedTypes = ['success', 'error', 'warning', 'info'];
+                    const icons = {
+                        success: '✅',
+                        error: '⛔',
+                        warning: '⚠️',
+                        info: 'ℹ️'
+                    };
+
+                    const safeType = allowedTypes.includes(type) ? type : 'info';
+                    this.modal.type = safeType;
+                    this.modal.icon = icons[safeType] || icons.info;
+                    this.modal.title = title || 'Сообщение';
+                    this.modal.message = (message ?? '').toString().replace(/\n/g, '<br>');
+                    this.modal.visible = true;
+                },
+                initDatePicker() {
+                    if (typeof flatpickr === 'undefined') {
+                        console.warn('Flatpickr не загружен');
+                        return;
+                    }
+                    const input = document.getElementById('trip-date-picker');
+                    if (!input) {
+                        return;
+                    }
+                    if (this.datePickerInstance) {
+                        this.datePickerInstance.destroy();
+                        this.datePickerInstance = null;
+                    }
+                    if (flatpickr.l10ns?.ru) {
+                        flatpickr.localize(flatpickr.l10ns.ru);
+                    }
+                    this.datePickerInstance = flatpickr(input, {
+                        defaultDate: this.searchForm.date,
+                        dateFormat: 'Y-m-d',
+                        altInput: true,
+                        altFormat: 'd.m.Y',
+                        disableMobile: true,
+                        onChange: (_, dateStr) => {
+                            this.searchForm.date = dateStr;
+                        }
+                    });
+                },
+                destroyDatePicker() {
+                    if (this.datePickerInstance) {
+                        this.datePickerInstance.destroy();
+                        this.datePickerInstance = null;
+                    }
+                },
                 async loadStations() {
                     this.loadingStations = true;
                     try {
@@ -641,8 +868,11 @@
                         errorMessage += error.message || 'Неизвестная ошибка';
                         errorMessage += '\n\n💡 Совет: Обратитесь к администратору для проверки настроек API Перевозчика.';
                         errorMessage += '\n\nЕсли станции не загружаются, возможно, нужно синхронизировать их в админ-панели.';
-                        
-                        alert(errorMessage);
+                        this.showModal({
+                            type: 'error',
+                            title: 'Ошибка загрузки станций',
+                            message: errorMessage
+                        });
                         this.stations = [];
                     } finally {
                         this.loadingStations = false;
@@ -677,7 +907,11 @@
                 
                 async searchCancelledRaces() {
                     if (!this.searchForm.from || !this.searchForm.to || !this.searchForm.date) {
-                        alert('Пожалуйста, заполните все поля: станцию отправления, станцию прибытия и дату');
+                        this.showModal({
+                            type: 'warning',
+                            title: 'Нужно заполнить все поля',
+                            message: 'Пожалуйста, выберите станцию отправления, станцию прибытия и дату перед поиском отмененных рейсов.'
+                        });
                         return;
                     }
                     
@@ -807,7 +1041,11 @@
                             userMessage += '\n\n' + errorData.hint;
                         }
                         
-                        alert(userMessage);
+                        this.showModal({
+                            type: 'error',
+                            title: 'Ошибка запроса к API перевозчика',
+                            message: userMessage
+                        });
                         this.races = [];
                         this.searchPerformed = true;
                     } finally {
@@ -848,13 +1086,21 @@
                         
                         if (data.success) {
                             this.currentTask = data.data;
-                            alert(`✅ Задача создана успешно!\n\nНазвание: ${data.data.title}\nID: ${data.data.id}\n\nТеперь найдите отмененные рейсы.`);
+                            this.showModal({
+                                type: 'success',
+                                title: 'Задача создана успешно',
+                                message: `Название: ${data.data.title}\nID: ${data.data.id}\n\nТеперь найдите отмененные рейсы.`
+                            });
                         } else {
                             throw new Error(data.message || 'Не удалось создать задачу');
                         }
                     } catch (error) {
                         console.error('Error creating task:', error);
-                        alert('⚠️ Ошибка при создании задачи: ' + error.message + '\n\nОбратитесь к администратору.');
+                        this.showModal({
+                            type: 'error',
+                            title: 'Ошибка при создании задачи',
+                            message: '⚠️ Ошибка при создании задачи: ' + (error.message || 'Неизвестная ошибка') + '\n\nОбратитесь к администратору.'
+                        });
                     } finally {
                         this.creatingTask = false;
                     }
@@ -862,12 +1108,20 @@
                 
                 async addRacesToTask() {
                     if (!this.currentTask || !this.currentTask.id) {
-                        alert('Сначала создайте задачу');
+                        this.showModal({
+                            type: 'warning',
+                            title: 'Нет активной задачи',
+                            message: 'Сначала создайте задачу, чтобы добавить в неё отмененные рейсы.'
+                        });
                         return;
                     }
                     
                     if (this.selectedRaces.length === 0) {
-                        alert('Выберите хотя бы один рейс для добавления');
+                        this.showModal({
+                            type: 'warning',
+                            title: 'Нет выбранных рейсов',
+                            message: 'Выберите хотя бы один отмененный рейс, чтобы добавить его в задачу.'
+                        });
                         return;
                     }
                     
@@ -900,7 +1154,11 @@
                         if (data.success) {
                             // Обновляем задачу
                             this.currentTask = data.data.task;
-                            alert(`✅ Добавлено рейсов: ${data.data.added_count}\nВсего рейсов в задаче: ${data.data.total_races}`);
+                            this.showModal({
+                                type: 'success',
+                                title: 'Рейсы добавлены',
+                                message: `Добавлено рейсов: ${data.data.added_count}\nВсего рейсов в задаче: ${data.data.total_races}`
+                            });
                             // Очищаем выбранные рейсы
                             this.selectedRaces = [];
                             // Опционально: очищаем список найденных рейсов
@@ -911,7 +1169,11 @@
                         }
                     } catch (error) {
                         console.error('Error adding races to task:', error);
-                        alert('⚠️ Ошибка при добавлении рейсов: ' + error.message + '\n\nОбратитесь к администратору.');
+                        this.showModal({
+                            type: 'error',
+                            title: 'Ошибка при добавлении рейсов',
+                            message: '⚠️ Ошибка при добавлении рейсов: ' + (error.message || 'Неизвестная ошибка') + '\n\nОбратитесь к администратору.'
+                        });
                     } finally {
                         this.addingRaces = false;
                     }
@@ -919,12 +1181,20 @@
                 
                 async loadPassengersForTask() {
                     if (!this.currentTask || !this.currentTask.id) {
-                        alert('Сначала создайте задачу');
+                        this.showModal({
+                            type: 'warning',
+                            title: 'Нет активной задачи',
+                            message: 'Сначала создайте задачу, чтобы загрузить пассажиров.'
+                        });
                         return;
                     }
                     
                     if (this.currentTaskRacesCount === 0) {
-                        alert('В задаче нет рейсов. Сначала добавьте отмененные рейсы в задачу.');
+                        this.showModal({
+                            type: 'warning',
+                            title: 'Нет рейсов в задаче',
+                            message: 'Добавьте отмененные рейсы в задачу, прежде чем загружать пассажиров.'
+                        });
                         return;
                     }
                     
@@ -951,13 +1221,21 @@
                             // Загружаем список пассажиров для отображения
                             await this.fetchPassengersList();
                             this.passengersLoaded = true;
-                            alert(`✅ Загружено пассажиров: ${data.data.saved_count || 0}`);
+                            this.showModal({
+                                type: 'success',
+                                title: 'Пассажиры загружены',
+                                message: `Загружено пассажиров: ${data.data.saved_count || 0}`
+                            });
                         } else {
                             throw new Error(data.message || 'Не удалось загрузить пассажиров');
                         }
                     } catch (error) {
                         console.error('Error loading passengers:', error);
-                        alert('⚠️ В текущий момент сервис недоступен.\n\nОшибка при загрузке пассажиров: ' + error.message + '\n\nОбратитесь к администратору для проверки настроек внешней БД.');
+                        this.showModal({
+                            type: 'error',
+                            title: 'Ошибка загрузки пассажиров',
+                            message: '⚠️ В текущий момент сервис недоступен.\n\nОшибка при загрузке пассажиров: ' + (error.message || 'Неизвестная ошибка') + '\n\nОбратитесь к администратору для проверки настроек внешней БД.'
+                        });
                         this.passengersLoaded = false;
                     } finally {
                         this.loadingPassengers = false;
@@ -1119,17 +1397,29 @@
                 },
                 async sendNotifications() {
                     if (!this.currentTask || !this.currentTask.id) {
-                        alert('Сначала создайте задачу и загрузите пассажиров');
+                        this.showModal({
+                            type: 'warning',
+                            title: 'Нет активной задачи',
+                            message: 'Сначала создайте задачу и загрузите пассажиров.'
+                        });
                         return;
                     }
                     
                     if (!this.passengersLoaded) {
-                        alert('Сначала загрузите список пассажиров');
+                        this.showModal({
+                            type: 'warning',
+                            title: 'Нет данных пассажиров',
+                            message: 'Сначала загрузите список пассажиров для выбранной задачи.'
+                        });
                         return;
                     }
                     
                     if (this.selectedPassengers.length === 0) {
-                        alert('Выберите хотя бы одного пассажира для отправки');
+                        this.showModal({
+                            type: 'warning',
+                            title: 'Нет выбранных пассажиров',
+                            message: 'Выберите хотя бы одного пассажира перед отправкой уведомлений.'
+                        });
                         return;
                     }
                     
@@ -1162,7 +1452,11 @@
                         const data = await response.json();
                         
                         if (data.success) {
-                            alert(`✅ Уведомления поставлены в очередь!\nЗадача: ${this.currentTask.id}\nПолучателей: ${data.total_recipients || 0}`);
+                            this.showModal({
+                                type: 'success',
+                                title: 'Уведомления запущены',
+                                message: `Задача: ${this.currentTask.id}\nПолучателей: ${data.total_recipients || 0}\nУведомления поставлены в очередь.`
+                            });
                             this.stats = {
                                 total: data.total_recipients || 0,
                                 sent: 0,
@@ -1177,7 +1471,11 @@
                         }
                     } catch (error) {
                         console.error('Error sending notifications:', error);
-                        alert('⚠️ В текущий момент сервис недоступен.\n\nОшибка при отправке уведомлений: ' + error.message + '\n\nОбратитесь к администратору для проверки настроек WhatsApp и Email.');
+                        this.showModal({
+                            type: 'error',
+                            title: 'Ошибка при отправке уведомлений',
+                            message: '⚠️ В текущий момент сервис недоступен.\n\nОшибка при отправке уведомлений: ' + (error.message || 'Неизвестная ошибка') + '\n\nОбратитесь к администратору для проверки настроек WhatsApp и Email.'
+                        });
                     } finally {
                         this.sending = false;
                     }

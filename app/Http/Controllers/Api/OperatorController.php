@@ -26,8 +26,8 @@ class OperatorController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'name' => 'required|string|max(255)',
-            'email' => 'required|email|max(255)|unique:users,email',
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|max:255|unique:users,email',
             'password' => 'required|string|min:8',
             'is_active' => 'nullable|boolean',
         ]);
@@ -63,11 +63,11 @@ class OperatorController extends Controller
         $operator = User::where('role', 'operator')->findOrFail($id);
 
         $data = $request->validate([
-            'name' => 'required|string|max(255)',
+            'name' => 'required|string|max:255',
             'email' => [
                 'required',
                 'email',
-                'max(255)',
+                'max:255',
                 Rule::unique('users')->ignore($operator->id),
             ],
             'password' => 'nullable|string|min:8',

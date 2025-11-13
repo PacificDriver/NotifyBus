@@ -81,6 +81,17 @@ class TripController extends Controller
 
             $this->logSearchHistory($request, $fromStation, $toStation, $cancelledRaces);
 
+            // Добавляем информацию о станциях к каждому рейсу
+            // чтобы при добавлении в задачу можно было создать Trip
+            $enrichedRaces = array_map(function ($race) use ($fromStation, $toStation) {
+                return array_merge($race, [
+                    'from_station_id' => $fromStation->id,
+                    'to_station_id' => $toStation->id,
+                    'from_station_name' => $fromStation->name,
+                    'to_station_name' => $toStation->name,
+                ]);
+            }, $cancelledRaces);
+
             // Возвращаем данные рейсов в формате согласно ТЗ
             // Структура ответа API рейсов:
             // - id (string) - Уникальный идентификатор рейса
@@ -88,11 +99,15 @@ class TripController extends Controller
             // - route_tz (integer) - Часовой пояс маршрута (UTC+N)
             // - dt_depart (datetime) - Время отправления (UTC)
             // - dt_arrive (datetime) - Время прибытия (UTC)
+            // - from_station_id (integer) - ID станции отправления в локальной БД
+            // - to_station_id (integer) - ID станции прибытия в локальной БД
+            // - from_station_name (string) - Название станции отправления
+            // - to_station_name (string) - Название станции прибытия
 
             return response()->json([
                 'success' => true,
-                'data' => array_values($cancelledRaces), // array_values для сброса индексов после фильтрации
-                'count' => count($cancelledRaces),
+                'data' => array_values($enrichedRaces), // array_values для сброса индексов после фильтрации
+                'count' => count($enrichedRaces),
                 'from_station' => [
                     'id' => $fromStation->id,
                     'name' => $fromStation->name,

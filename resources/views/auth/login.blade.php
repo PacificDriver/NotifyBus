@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Вход в систему - Bus Notification System</title>
+    <title>Вход в систему</title>
     <style>
         * {
             margin: 0;
@@ -140,8 +140,7 @@
 <body>
     <div class="login-container">
         <div class="login-header">
-            <h1>🚌 Bus Notification System</h1>
-            <p>Система уведомлений пассажиров</p>
+            <h1>Система уведомлений пассажиров</h1>
             <p style="font-size: 0.9rem; color: #999; margin-top: 5px;">Автоматическая рассылка уведомлений об изменениях в расписании рейсов</p>
         </div>
 
@@ -190,14 +189,6 @@
             <button type="submit" class="btn">Войти</button>
         </form>
 
-        <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; text-align: center; color: #666; font-size: 0.85rem;">
-            <p style="margin-bottom: 10px; font-weight: 600; color: #333;">Тестовые учетные записи:</p>
-            <p style="margin: 5px 0;"><strong>Администратор:</strong> admin@busnotifications.ru / password</p>
-            <p style="margin: 5px 0;"><strong>Оператор:</strong> operator@busnotifications.ru / password</p>
-            <p style="margin-top: 15px; font-size: 0.8rem; color: #999;">
-                После входа система автоматически перенаправит вас в соответствующую панель
-            </p>
-        </div>
     </div>
 </body>
 </html>

@@ -20,20 +20,20 @@ class DatabaseSeeder extends Seeder
     {
         // Создаем пользователей (если их еще нет)
         $admin = User::updateOrCreate(
-            ['email' => 'admin@busnotifications.ru'],
+            ['email' => 'admin@its-infocenter.ru'],
             [
                 'name' => 'Администратор',
-                'password' => Hash::make('password'),
+                'password' => Hash::make('2PwZfdHh2ISeBbwmPT61gWto9Be7'),
                 'role' => 'admin',
                 'is_active' => true,
             ]
         );
 
         $operator = User::updateOrCreate(
-            ['email' => 'operator@busnotifications.ru'],
+            ['email' => 'moder@its-infocenter.ru'],
             [
-                'name' => 'Оператор Иван',
-                'password' => Hash::make('password'),
+                'name' => 'Модератор',
+                'password' => Hash::make('t93rL3B784IB1N7oW83BxJjhOf85'),
                 'role' => 'operator',
                 'is_active' => true,
             ]
@@ -232,8 +232,8 @@ class DatabaseSeeder extends Seeder
         $this->command->info('✅ База данных заполнена тестовыми данными!');
         $this->command->info('');
         $this->command->info('👤 Учетные данные:');
-        $this->command->info('   Администратор: admin@busnotifications.ru / password');
-        $this->command->info('   Оператор: operator@busnotifications.ru / password');
+        $this->command->info('   Администратор: admin@its-infocenter.ru / 2PwZfdHh2ISeBbwmPT61gWto9Be7');
+        $this->command->info('   Модератор: moder@its-infocenter.ru / t93rL3B784IB1N7oW83BxJjhOf85');
         $this->command->info('');
         $this->command->info('📊 Создано:');
         $this->command->info('   - 2 пользователя (1 админ, 1 оператор)');
