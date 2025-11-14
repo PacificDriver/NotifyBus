@@ -50,9 +50,11 @@ return [
             'type' => 'artisan_once',
             'command' => env('PASSENGER_IMPORT_COMMAND', 'import:pb-order-items'),
             'log_file' => storage_path('logs/import.log'),
-            'description' => 'Импортирует записи pb_order_item и обновляет пассажиров.',
+            'description' => 'Непрерывный импортер pb_order_item → локальные пассажиры (интервал настраивается в админке).',
             'options' => [
-                'arguments' => [],
+                'arguments' => ['--watch', '--interval={interval}'],
+                'interval_setting' => 'importer_interval_seconds',
+                'default_interval' => (int) env('PASSENGER_IMPORT_INTERVAL', 420),
             ],
         ],
     ],

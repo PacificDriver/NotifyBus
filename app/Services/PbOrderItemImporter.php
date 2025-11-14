@@ -2,15 +2,18 @@
 
 namespace App\Services;
 
+use App\Models\ImportState;
 use App\Models\Passenger;
 use App\Models\Route;
+use App\Models\Setting;
 use App\Models\Station;
 use App\Models\Trip;
 use Carbon\Carbon;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-use App\Models\ImportState;
 
 class PbOrderItemImporter
 {
@@ -42,7 +45,14 @@ class PbOrderItemImporter
             'last_processed_id' => $sinceId ?? 0,
         ];
 
-        $query = DB::table('pb_order_item')->orderBy('ID');
+        $sourceTable = Setting::get('importer_source_table', 'pb_order_item');
+
+        if (!Schema::hasTable($sourceTable)) {
+            Log::error("Importer source table not found", ['table' => $sourceTable]);
+            throw new \RuntimeException("Таблица '{$sourceTable}' недоступна. Проверьте настройку «Импорт → Таблица источника» в админке.");
+        }
+
+        $query = DB::table($sourceTable)->orderBy('ID');
 
         if ($sinceId) {
             $query->where('ID', '>', $sinceId);

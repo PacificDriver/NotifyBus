@@ -150,7 +150,7 @@ class SettingsController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'group' => 'required|string|in:whatsapp,email,carrier_api,external_db,notification',
+            'group' => 'required|string|in:whatsapp,email,carrier_api,external_db,notification,importer',
             'settings' => 'required|array',
         ]);
 
@@ -907,7 +907,7 @@ class SettingsController extends Controller
      */
     protected function getSettingType(string $key): string
     {
-        if (str_contains($key, '_limit') || str_contains($key, '_count') || str_contains($key, 'timeout')) {
+        if (str_contains($key, '_limit') || str_contains($key, '_count') || str_contains($key, 'timeout') || str_contains($key, 'interval') || str_contains($key, '_seconds')) {
             return 'integer';
         }
         

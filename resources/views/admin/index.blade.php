@@ -235,6 +235,115 @@
             border-radius: 6px;
         }
 
+        .template-manager {
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .template-manager-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .template-create-form {
+            padding: 20px;
+            border: 1px solid #e1e7ff;
+            border-radius: 12px;
+            background: #f8faff;
+            box-shadow: inset 0 1px 3px rgba(102, 126, 234, 0.07);
+        }
+
+        .template-form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-top: 16px;
+        }
+
+        .template-form-grid label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #3f475e;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .template-form-grid input,
+        .template-form-grid select,
+        .template-form-grid textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #dbe4ff;
+            border-radius: 8px;
+            font-size: 0.95rem;
+        }
+
+        .template-form-grid .full-width {
+            grid-column: 1 / -1;
+        }
+
+        .checkbox-inline {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+        }
+
+        .template-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .template-card {
+            border: 1px solid #e1e7ff;
+            border-radius: 12px;
+            padding: 20px;
+            background: white;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.08);
+        }
+
+        .template-card-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .template-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 12px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .badge-success {
+            background: #d3f9d8;
+            color: #2f9e44;
+        }
+
+        .badge-warning {
+            background: #fff3bf;
+            color: #f08c00;
+        }
+
         .muted-text {
             color: #6c757d;
         }
@@ -305,6 +414,10 @@
         
         .btn-danger:hover {
             background: #fa5252;
+        }
+
+        .hidden {
+            display: none !important;
         }
         
         .status-indicator {
@@ -546,6 +659,60 @@
         </div>
         
         <div class="card">
+            <h2>Шаблоны сообщений</h2>
+            <div id="template-manager-dashboard" class="template-manager">
+                <div class="template-manager-header">
+                    <div>
+                        <p class="muted-text">Создавайте и редактируйте тексты WhatsApp и Email перед массовой рассылкой.</p>
+                    </div>
+                    <button type="button" class="btn btn-secondary template-toggle-create">➕ Новый шаблон</button>
+                </div>
+                <form class="template-create-form hidden" autocomplete="off">
+                    <h3 style="margin-bottom: 10px;">Новый шаблон</h3>
+                    <div class="template-form-grid">
+                        <label>
+                            Название
+                            <input type="text" name="name" required data-template-field="name" placeholder="Отмена рейса (WhatsApp)">
+                        </label>
+                        <label>
+                            Слаг
+                            <input type="text" name="slug" required data-template-field="slug" placeholder="cancel-whatsapp">
+                        </label>
+                        <label>
+                            Тип
+                            <select name="type" required>
+                                <option value="cancellation">Отмена рейса</option>
+                                <option value="delay">Задержка рейса</option>
+                                <option value="general">Общий шаблон</option>
+                            </select>
+                        </label>
+                        <label>
+                            Тема письма (Email)
+                            <input type="text" name="subject" placeholder="Рейс отменён">
+                        </label>
+                        <label class="full-width">
+                            Текст сообщения
+                            <textarea name="body" rows="4" required placeholder="Уважаемый {{passenger_full_name}}, сообщаем об отмене рейса {{trip_number}}..."></textarea>
+                        </label>
+                        <label class="full-width">
+                            Доступные переменные (через запятую)
+                            <input type="text" name="available_variables" placeholder="{{passenger_full_name}}, {{trip_number}}, {{departure_time}}">
+                        </label>
+                        <label class="checkbox-inline">
+                            <input type="checkbox" name="is_active" checked>
+                            Шаблон активен
+                        </label>
+                    </div>
+                    <div class="template-actions">
+                        <button type="submit" class="btn btn-primary">Сохранить шаблон</button>
+                        <button type="button" class="btn btn-text template-toggle-create">Отмена</button>
+                    </div>
+                </form>
+                <div class="template-list"></div>
+            </div>
+        </div>
+
+        <div class="card">
             <h2>Статус сервисов</h2>
             <div style="padding: 20px;" id="services-status">
                 <div style="margin-bottom: 15px;">
@@ -567,6 +734,7 @@
             </div>
         </div>
         
+        <script src="/js/template-manager.js"></script>
         <script>
             const modalElements = {
                 root: null,
@@ -751,6 +919,7 @@
                 }
 
                 checkServicesStatus();
+                initTemplateManagerDashboard();
             });
 
             const processState = {
@@ -841,6 +1010,13 @@
                 const startedAt = formatDateTime(details.started_at);
                 const finishedAt = formatDateTime(details.finished_at);
                 const description = escapeHtml(process.description || '');
+                const intervalSeconds = details.interval_seconds ? parseInt(details.interval_seconds, 10) : null;
+                const intervalBlock = intervalSeconds
+                    ? `<div>
+                            <dt>Интервал</dt>
+                            <dd>${Math.round(intervalSeconds / 60)} мин (${intervalSeconds} сек)</dd>
+                       </div>`
+                    : '';
 
                 return `
                     <div class="process-item" data-process-name="${escapeHtml(process.name)}" data-process-label="${escapeHtml(process.label)}">
@@ -868,6 +1044,7 @@
                                 <dt>Завершение</dt>
                                 <dd>${finishedAt}</dd>
                             </div>
+                            ${intervalBlock}
                         </div>
                         <div class="process-actions">
                             <button class="btn btn-primary" data-process-action="start">Запустить</button>
@@ -1010,6 +1187,28 @@
                         message: error.message || 'Не удалось получить логи процесса.',
                     });
                 }
+            }
+
+            function initTemplateManagerDashboard() {
+                const root = document.getElementById('template-manager-dashboard');
+                if (!root || typeof TemplateManager === 'undefined') {
+                    return;
+                }
+
+                if (root.__templateManager) {
+                    return;
+                }
+
+                const manager = new TemplateManager({
+                    root,
+                    listSelector: '.template-list',
+                    createFormSelector: '.template-create-form',
+                    toggleSelector: '.template-toggle-create',
+                    emptyText: 'Пока нет шаблонов. Создайте первый, чтобы ускорить рассылку.',
+                });
+
+                manager.init();
+                root.__templateManager = manager;
             }
         </script>
     </div>

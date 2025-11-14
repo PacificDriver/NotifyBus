@@ -369,6 +369,116 @@
             background: #667eea;
             color: #fff;
         }
+
+        .template-manager {
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .template-manager-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .template-create-form {
+            padding: 20px;
+            border: 1px solid #e1e7ff;
+            border-radius: 12px;
+            background: #f8faff;
+            box-shadow: inset 0 1px 3px rgba(102, 126, 234, 0.07);
+        }
+
+        .template-form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-top: 16px;
+        }
+
+        .template-form-grid label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #3f475e;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .template-form-grid input,
+        .template-form-grid select,
+        .template-form-grid textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #dbe4ff;
+            border-radius: 8px;
+            font-size: 0.95rem;
+        }
+
+        .template-form-grid .full-width {
+            grid-column: 1 / -1;
+        }
+
+        .checkbox-inline {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+        }
+
+        .template-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .template-card {
+            border: 1px solid #e1e7ff;
+            border-radius: 12px;
+            padding: 20px;
+            background: white;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.08);
+        }
+
+        .template-card-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .template-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 12px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .badge-success {
+            background: #d3f9d8;
+            color: #2f9e44;
+        }
+
+        .badge-warning {
+            background: #fff3bf;
+            color: #f08c00;
+        }
     </style>
 </head>
 <body>
@@ -399,6 +509,8 @@
                     <button class="tab" data-tab-target="email" onclick="switchTab('email', this)">✉️ Email</button>
                     <button class="tab" data-tab-target="carrier" onclick="switchTab('carrier', this)">🚌 API Перевозчика</button>
                     <button class="tab" data-tab-target="notification" onclick="switchTab('notification', this)">🔔 Уведомления</button>
+                    <button class="tab" data-tab-target="importer" onclick="switchTab('importer', this)">🚍 Импорт</button>
+                    <button class="tab" data-tab-target="templates" onclick="switchTab('templates', this)">📝 Шаблоны</button>
                     <button class="tab" data-tab-target="search_history" onclick="switchTab('search_history', this)">🕘 История поиска</button>
                     <button class="tab" data-tab-target="operators" onclick="switchTab('operators', this)">👥 Операторы</button>
             </div>
@@ -585,6 +697,92 @@
                 </form>
             </div>
 
+            <div id="importer-tab" class="tab-content">
+                <h2>Импорт пассажиров</h2>
+                <p style="color:#666; margin-bottom:15px;">Настройте интервал цикличного импорта pb_order_item → локальные пассажиры. Значение применяется при следующем запуске процесса «Импорт пассажиров».</p>
+                <form id="importer-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="importer_interval_minutes">Интервал запуска (минуты)</label>
+                            <input type="number" id="importer_interval_minutes" name="interval_minutes" min="1" max="120" value="7" required>
+                            <small>Каждые <span id="importer_interval_minutes_display">7</span> мин (<span id="importer_interval_seconds_display">420</span> сек) запускается очередной цикл импорта.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="importer_source_table">Таблица-источник</label>
+                            <input type="text" id="importer_source_table" name="source_table" placeholder="pb_order_item" required>
+                            <small>Название таблицы в реплике MySQL (нужно поле ID и RACE_ID).</small>
+                        </div>
+                    </div>
+                    <div class="btn-group">
+                        <button type="submit" class="btn btn-primary">💾 Сохранить интервал</button>
+                    </div>
+                </form>
+            </div>
+
+            <div id="templates-tab" class="tab-content">
+                <h2>Шаблоны сообщений</h2>
+                <p style="color:#666; margin-bottom:15px;">Шаблоны используются при рассылке писем и WhatsApp-сообщений. Используйте переменные вида {{passenger_full_name}} или {{trip_number}} — список доступен под формой.</p>
+                <div id="template-manager-settings" class="template-manager">
+                    <div class="template-manager-header">
+                        <div>
+                            <p class="muted-text">Все изменения сохраняются сразу и доступны операторам.</p>
+                        </div>
+                        <button type="button" class="btn btn-secondary template-toggle-create">➕ Новый шаблон</button>
+                    </div>
+                    <form class="template-create-form hidden" autocomplete="off">
+                        <h3 style="margin-bottom: 10px;">Новый шаблон</h3>
+                        <div class="template-form-grid">
+                            <label>
+                                Название
+                                <input type="text" name="name" required data-template-field="name" placeholder="Отмена рейса (Email)">
+                            </label>
+                            <label>
+                                Слаг
+                                <input type="text" name="slug" required data-template-field="slug" placeholder="cancel-email">
+                            </label>
+                            <label>
+                                Тип
+                                <select name="type" required>
+                                    <option value="cancellation">Отмена рейса</option>
+                                    <option value="delay">Задержка рейса</option>
+                                    <option value="general">Общий шаблон</option>
+                                </select>
+                            </label>
+                            <label>
+                                Тема письма (Email)
+                                <input type="text" name="subject" placeholder="Рейс отменён">
+                            </label>
+                            <label class="full-width">
+                                Текст сообщения
+                                <textarea name="body" rows="4" required placeholder="Здравствуйте, {{passenger_full_name}}..."></textarea>
+                            </label>
+                            <label class="full-width">
+                                Доступные переменные (через запятую)
+                                <input type="text" name="available_variables" placeholder="{{passenger_full_name}}, {{trip_number}}, {{departure_time}}">
+                            </label>
+                            <label class="checkbox-inline">
+                                <input type="checkbox" name="is_active" checked>
+                                Шаблон активен
+                            </label>
+                        </div>
+                        <div class="template-actions">
+                            <button type="submit" class="btn btn-primary">Сохранить шаблон</button>
+                            <button type="button" class="btn btn-text template-toggle-create">Отмена</button>
+                        </div>
+                    </form>
+                    <div class="template-list"></div>
+                    <div style="background:#f8faff; border:1px dashed #cdd5ff; border-radius:12px; padding:16px;">
+                        <strong>Популярные переменные:</strong>
+                        <ul style="margin-top:8px; padding-left:18px; color:#555; line-height:1.5;">
+                            <li>{{passenger_full_name}}, {{passenger_first_name}}</li>
+                            <li>{{trip_number}}, {{departure_station}}, {{arrival_station}}</li>
+                            <li>{{departure_time}}, {{departure_date}}, {{departure_time_only}}</li>
+                            <li>{{seat_number}}, {{cancellation_reason}}</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
             <div id="search_history-tab" class="tab-content">
                 <h2>История поиска операторов</h2>
                 <p style="margin-bottom: 20px; color: #666;">
@@ -656,6 +854,7 @@
         </div>
     </div>
 
+    <script src="/js/template-manager.js"></script>
     <script>
         const API_BASE = '/api';
         const token = document.querySelector('meta[name="csrf-token"]').content;
@@ -670,7 +869,7 @@
             initialized: false,
             list: [],
         };
-        const AVAILABLE_TABS = ['whatsapp', 'email', 'carrier', 'notification', 'search_history', 'operators'];
+        const AVAILABLE_TABS = ['whatsapp', 'email', 'carrier', 'notification', 'importer', 'templates', 'search_history', 'operators'];
         const DEFAULT_TAB = 'whatsapp';
 
         const modalElements = {
@@ -745,8 +944,10 @@
         // Загрузка настроек при открытии страницы
         document.addEventListener('DOMContentLoaded', function() {
             initializeModal();
+            initImporterControls();
             applyInitialTabFromHash();
             loadSettings();
+            initTemplateManagerSettings();
             window.addEventListener('hashchange', applyInitialTabFromHash);
         });
 
@@ -811,6 +1012,14 @@
                     fillForm('email', data.data.email || {});
                     fillForm('carrier_api', data.data.carrier_api || {});
                     fillForm('notification', data.data.notification || {});
+                        const importerSettings = data.data.importer || {};
+                        if (!('interval_seconds' in importerSettings)) {
+                            importerSettings.interval_seconds = 420;
+                        }
+                        if (!('source_table' in importerSettings)) {
+                            importerSettings.source_table = 'pb_order_item';
+                        }
+                        fillForm('importer', importerSettings);
                 }
             } catch (error) {
                 showAlert('⚠️ В текущий момент сервис недоступен.\n\nОшибка при загрузке настроек: ' + error.message + '\n\nОбратитесь к администратору.', 'error');
@@ -818,6 +1027,15 @@
         }
 
         function fillForm(group, settings) {
+            if (group === 'importer') {
+                const seconds = parseInt(settings.interval_seconds ?? 420, 10);
+                updateImporterInputs(seconds);
+                const tableInput = document.getElementById('importer_source_table');
+                if (tableInput) {
+                    tableInput.value = settings.source_table || 'pb_order_item';
+                }
+                return;
+            }
             Object.keys(settings).forEach(key => {
                 const input = document.querySelector(`#${group}_${key}`);
                 if (input) {
@@ -834,6 +1052,40 @@
                     }
                 }
             });
+        }
+
+        function updateImporterInputs(seconds) {
+            const minutesInput = document.getElementById('importer_interval_minutes');
+            const minutesDisplay = document.getElementById('importer_interval_minutes_display');
+            const secondsDisplay = document.getElementById('importer_interval_seconds_display');
+
+            if (!minutesInput) {
+                return;
+            }
+
+            const minutes = Math.max(1, Math.round((seconds || 420) / 60));
+            minutesInput.value = minutes;
+            if (minutesDisplay) {
+                minutesDisplay.textContent = minutes;
+            }
+            if (secondsDisplay) {
+                secondsDisplay.textContent = minutes * 60;
+            }
+        }
+
+        function initImporterControls() {
+            const minutesInput = document.getElementById('importer_interval_minutes');
+            if (!minutesInput) {
+                return;
+            }
+
+            minutesInput.addEventListener('input', (event) => {
+                const minutes = Math.max(1, Math.round(parseFloat(event.target.value || '1')));
+                updateImporterInputs(minutes * 60);
+            });
+
+            const initialMinutes = Math.max(1, Math.round(parseFloat(minutesInput.value || '7')));
+            updateImporterInputs(initialMinutes * 60);
         }
 
         // Обработчики форм
@@ -857,22 +1109,66 @@
             await saveSettings('notification', new FormData(e.target));
         });
 
-        async function saveSettings(group, formData) {
+        const importerForm = document.getElementById('importer-form');
+        if (importerForm) {
+            importerForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await saveSettings('importer', new FormData(importerForm));
+            });
+        }
+
+        function buildSettingsPayload(group, formData) {
+            if (group === 'importer') {
+                const minutesValue = parseFloat(formData.get('interval_minutes'));
+                const tableValue = (formData.get('source_table') || '').trim();
+
+                if (!Number.isFinite(minutesValue) || minutesValue < 1) {
+                    throw new Error('Укажите интервал (минимум 1 минута).');
+                }
+
+                if (!tableValue) {
+                    throw new Error('Укажите таблицу-источник.');
+                }
+
+                return {
+                    interval_seconds: Math.max(60, Math.round(minutesValue * 60)),
+                    source_table: tableValue,
+                };
+            }
+
             const settings = {};
             formData.forEach((value, key) => {
-                // Пропускаем пустые значения для паролей (чтобы не затереть существующие)
-                if (key === 'key' || key === 'password' || key === 'api_token' || key === 'webhook_secret') {
-                    if (!value || value.trim() === '') {
-                        return; // Пропускаем пустые пароли
-                    }
+                if (typeof value === 'string') {
+                    value = value.trim();
                 }
+
+                if ((key === 'key' || key === 'password' || key === 'api_token' || key === 'webhook_secret') && !value) {
+                    return;
+                }
+
                 settings[key] = value;
             });
 
-            // Для чекбоксов
             if (group === 'whatsapp') {
                 const checkbox = document.getElementById('whatsapp_use_async');
                 settings.use_async = checkbox ? checkbox.checked : false;
+            }
+
+            return settings;
+        }
+
+        async function saveSettings(group, formData) {
+            let settings;
+            try {
+                settings = buildSettingsPayload(group, formData);
+            } catch (error) {
+                showAlert(error.message || 'Проверьте введенные данные', 'error');
+                return;
+            }
+
+            if (!settings || Object.keys(settings).length === 0) {
+                showAlert('Заполните параметры перед сохранением.', 'warning');
+                return;
             }
 
             try {
@@ -1593,6 +1889,28 @@
             } catch (error) {
                 showAlert('⚠️ Ошибка удаления оператора: ' + error.message, 'error');
             }
+        }
+
+        function initTemplateManagerSettings() {
+            const root = document.getElementById('template-manager-settings');
+            if (!root || typeof TemplateManager === 'undefined') {
+                return;
+            }
+
+            if (root.__templateManager) {
+                return;
+            }
+
+            const manager = new TemplateManager({
+                root,
+                listSelector: '.template-list',
+                createFormSelector: '.template-create-form',
+                toggleSelector: '.template-toggle-create',
+                emptyText: 'Список шаблонов пуст. Создайте первый шаблон, чтобы операторы могли пользоваться готовыми текстами.',
+            });
+
+            manager.init();
+            root.__templateManager = manager;
         }
     </script>
 </body>

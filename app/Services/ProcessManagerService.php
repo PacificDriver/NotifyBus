@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ImportState;
+use App\Models\Setting;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
@@ -183,6 +184,7 @@ class ProcessManagerService
                 'finished_at' => Arr::get($value, 'finished_at'),
                 'last_message' => Arr::get($value, 'last_message'),
                 'command' => Arr::get($value, 'command'),
+                'interval_seconds' => $this->resolveIntervalSeconds($definition),
             ],
         ];
     }
@@ -274,7 +276,10 @@ class ProcessManagerService
             throw new RuntimeException("Artisan command not configured for process {$name}");
         }
 
-        $arguments = Arr::get($definition, 'options.arguments', []);
+        $arguments = $this->interpolateArguments(
+            Arr::get($definition, 'options.arguments', []),
+            $definition
+        );
         $commandLine = $this->buildArtisanCommandLine($command, $arguments);
 
         $logFile = $definition['log_file'] ?? storage_path('logs/laravel.log');
@@ -401,6 +406,48 @@ class ProcessManagerService
         }
 
         return implode(' ', $parts);
+    }
+
+    protected function interpolateArguments(array $arguments, array $definition): array
+    {
+        if (empty($arguments)) {
+            return $arguments;
+        }
+
+        $placeholders = [];
+
+        if (Arr::has($definition, 'options.interval_setting')) {
+            $interval = $this->resolveIntervalSeconds($definition);
+            if ($interval !== null) {
+                $placeholders['{interval}'] = $interval;
+            }
+        }
+
+        if (empty($placeholders)) {
+            return $arguments;
+        }
+
+        return array_map(
+            fn ($argument) => is_string($argument)
+                ? str_replace(array_keys($placeholders), array_values($placeholders), $argument)
+                : $argument,
+            $arguments
+        );
+    }
+
+    protected function resolveIntervalSeconds(array $definition): ?int
+    {
+        $settingKey = Arr::get($definition, 'options.interval_setting');
+        $default = Arr::get($definition, 'options.default_interval', 420);
+
+        if (!$settingKey) {
+            return $default;
+        }
+
+        $value = Setting::get($settingKey, $default);
+        $value = is_numeric($value) ? (int) $value : $default;
+
+        return max(60, $value);
     }
 
     protected function findWindowsProcessId(string $commandLine): ?int

@@ -16,7 +16,9 @@ class ImportPbOrderItems extends Command
         {--since-id= : Импортировать только записи с ID больше указанного}
         {--race-id=* : Ограничить импорт конкретными внешними ID рейсов}
         {--chunk=500 : Размер порции для обработки}
-        {--dry-run : Выполнить без сохранения (для проверки)}';
+        {--dry-run : Выполнить без сохранения (для проверки)}
+        {--watch : Запустить в режиме постоянного цикла (для фонового процесса)}
+        {--interval=420 : Интервал между циклами в секундах при включенном режиме watch}';
 
     /**
      * The console command description.
@@ -30,8 +32,6 @@ class ImportPbOrderItems extends Command
      */
     public function handle(PbOrderItemImporter $importer): int
     {
-        $this->info('Запуск импорта pb_order_item...');
-
         $options = [
             'since_id' => $this->option('since-id') ? (int) $this->option('since-id') : null,
             'chunk' => (int) $this->option('chunk'),
@@ -43,12 +43,24 @@ class ImportPbOrderItems extends Command
             $options['race_ids'] = $raceIds;
         }
 
-        $stats = $importer->import($options);
+        $watchMode = (bool) $this->option('watch');
+        $interval = max(60, (int) $this->option('interval'));
 
-        $this->table(
-            ['Метрика', 'Значение'],
-            collect($stats)->map(fn ($value, $key) => [$key, $value])
-        );
+        if ($watchMode && ($options['dry_run'] ?? false)) {
+            $this->warn('Режим dry-run игнорируется при включённом watch, данные не будут сохраняться.');
+        }
+
+        return $watchMode
+            ? $this->runWatchLoop($importer, $options, $interval)
+            : $this->runSingleImport($importer, $options);
+    }
+
+    protected function runSingleImport(PbOrderItemImporter $importer, array $options): int
+    {
+        $this->info('Запуск одноразового импорта pb_order_item...');
+
+        $stats = $importer->import($options);
+        $this->renderStatsTable($stats);
 
         if ($options['dry_run'] ?? false) {
             $this->warn('Импорт выполнен в режиме dry-run. Изменения не сохранены.');
@@ -57,6 +69,34 @@ class ImportPbOrderItems extends Command
         }
 
         return Command::SUCCESS;
+    }
+
+    protected function runWatchLoop(PbOrderItemImporter $importer, array $options, int $interval): int
+    {
+        $this->info("Режим непрерывного импорта включён. Интервал между циклами: {$interval} сек.");
+
+        while (true) {
+            $cycleStartedAt = now();
+
+            try {
+                $this->runSingleImport($importer, $options);
+            } catch (\Throwable $e) {
+                $this->error("Ошибка цикла импорта: {$e->getMessage()}");
+            }
+
+            $elapsed = $cycleStartedAt->diffInSeconds(now());
+            $this->info("Цикл завершён за {$elapsed} сек. Пауза {$interval} сек...");
+
+            sleep($interval);
+        }
+    }
+
+    protected function renderStatsTable(array $stats): void
+    {
+        $this->table(
+            ['Метрика', 'Значение'],
+            collect($stats)->map(fn ($value, $key) => [$key, $value])
+        );
     }
 }
 
