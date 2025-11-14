@@ -40,21 +40,17 @@ return [
         'notification_worker' => [
             'label' => 'Worker уведомлений',
             'type' => 'supervisor',
-            'target' => env('NOTIFICATION_WORKER_TARGET', 'notifybus-worker:*'),
+            'target' => env('NOTIFICATION_WORKER_TARGET', 'notifybus-worker'),
             'log_file' => storage_path('logs/worker.log'),
-            'description' => 'Фоновая очередь отправки WhatsApp и Email уведомлений.',
-            'options' => [
-                'namespace' => 'notifybus-worker',
-            ],
+            'description' => 'Фоновая очередь отправки WhatsApp и Email уведомлений (управляется через Supervisor).',
         ],
         'passenger_import' => [
             'label' => 'Импорт пассажиров',
-            'type' => 'artisan_once',
-            'command' => env('PASSENGER_IMPORT_COMMAND', 'import:pb-order-items'),
-            'log_file' => storage_path('logs/import.log'),
-            'description' => 'Непрерывный импортер pb_order_item → локальные пассажиры (интервал настраивается в админке).',
+            'type' => 'supervisor',
+            'target' => env('PASSENGER_IMPORT_TARGET', 'notifybus-importer'),
+            'log_file' => storage_path('logs/import-supervisor.log'),
+            'description' => 'Импортирует пассажиров из внешней таблицы (цикл под Supervisor).',
             'options' => [
-                'arguments' => ['--watch', '--interval={interval}'],
                 'interval_setting' => 'importer_interval_seconds',
                 'default_interval' => (int) env('PASSENGER_IMPORT_INTERVAL', 420),
             ],

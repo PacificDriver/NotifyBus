@@ -631,6 +631,18 @@
                 </div>
 
                 <div class="setting-item">
+                    <small>Импорт данных</small>
+                    <h3>⬇️ Импорт пассажиров</h3>
+                    <p>Управление частотой импорта, выбор таблицы источника и просмотр инструкции по запуску процесса.</p>
+                    <div class="setting-actions">
+                        <a href="/admin/settings#importer" class="btn btn-primary" style="text-decoration: none;">Настроить импорт</a>
+                        <button class="btn btn-secondary" onclick="showModal({ type: 'info', title: 'Импорт пассажиров', message: 'Перейдите в настройки → вкладка «Импорт», чтобы изменить таблицу источника и интервал запуска. Процесс запускается из блока «Управление процессами».' })">
+                            Памятка
+                        </button>
+                    </div>
+                </div>
+
+                <div class="setting-item">
                     <small>Команда</small>
                     <h3>👥 Управление операторами</h3>
                     <p>Добавление, блокировка и сброс паролей операторов, работающих с панелью уведомлений.</p>
@@ -639,15 +651,7 @@
                     </div>
                 </div>
 
-                <div class="setting-item">
-                    <small>Инфраструктура</small>
-                    <h3>⚙️ Очереди и фоновые задачи</h3>
-                    <p>Мониторинг worker-процессов, которые отправляют уведомления. Убедитесь, что Supervisor запущен.</p>
-                    <div class="setting-actions">
-                        <button class="btn btn-primary" onclick="showQueueInfo()">Памятка по очередям</button>
-                    </div>
-                </div>
-            </div>
+              
         </div>
 
         <div class="card">

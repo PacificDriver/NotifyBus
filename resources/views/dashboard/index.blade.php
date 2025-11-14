@@ -684,6 +684,7 @@
         
         createApp({
             data() {
+                const defaultTemplateMessage = '❌ Рейс отменен. Ваш рейс {ДАТА} отправление в {ВРЕМЯ} по маршруту {РЕЙС} отменен.';
                 return {
                     stations: [],
                     searchForm: {
@@ -705,9 +706,10 @@
                     passengersLoaded: false,
                     loadingPassengers: false,
                     sending: false,
+                    defaultTemplateMessage,
                     notificationForm: {
                         templateId: '',
-                        message: '❌ Рейс отменен. Ваш рейс {ДАТА} отправление в {ВРЕМЯ} по маршруту {РЕЙС} отменен.'
+                        message: defaultTemplateMessage
                     },
                     stats: {
                         total: 0,
@@ -751,6 +753,9 @@
                             this.datePickerInstance.setDate(newVal, false);
                         }
                     }
+                },
+                'notificationForm.templateId'(newValue) {
+                    this.applyTemplateContent(newValue);
                 },
                 currentTask() {
                     this.$nextTick(() => this.initDatePicker());
@@ -832,6 +837,19 @@
                         this.datePickerInstance = null;
                     }
                 },
+                applyTemplateContent(templateId) {
+                    if (!templateId) {
+                        this.notificationForm.message = this.defaultTemplateMessage;
+                        return;
+                    }
+
+                    const selectedTemplate = this.templates.find(template => String(template.id) === String(templateId));
+                    if (selectedTemplate) {
+                        this.notificationForm.message = selectedTemplate.body || this.defaultTemplateMessage;
+                    } else {
+                        this.notificationForm.message = this.defaultTemplateMessage;
+                    }
+                },
                 async loadStations() {
                     this.loadingStations = true;
                     try {
@@ -897,6 +915,9 @@
                         const data = await response.json();
                         if (data.success && data.data) {
                             this.templates = data.data.data || data.data || [];
+                            if (this.notificationForm.templateId) {
+                                this.applyTemplateContent(this.notificationForm.templateId);
+                            }
                         }
                     } catch (error) {
                         console.error('Error loading templates:', error);

@@ -134,23 +134,11 @@ class ProcessManagerService
         }
 
         $statusLine = trim($process['stdout']);
-
-        $status = 'unknown';
-        if (stripos($statusLine, 'RUNNING') !== false) {
-            $status = 'running';
-        } elseif (stripos($statusLine, 'STOPPED') !== false) {
-            $status = 'stopped';
-        } elseif (stripos($statusLine, 'STARTING') !== false) {
-            $status = 'starting';
-        } elseif (stripos($statusLine, 'BACKOFF') !== false) {
-            $status = 'backoff';
-        } elseif (stripos($statusLine, 'EXITED') !== false) {
-            $status = 'exited';
-        }
+        $parsed = $this->parseSupervisorStatusLine($statusLine);
 
         return [
-            'status' => $status,
-            'details' => $statusLine,
+            'status' => $parsed['status'],
+            'details' => $parsed['details'],
         ];
     }
 
@@ -205,9 +193,19 @@ class ProcessManagerService
         $result = $this->runShellCommand("{$binary} start {$target}");
 
         if ($result['exit_code'] !== 0) {
+            $stdout = trim($result['stdout']);
+            $stderr = trim($result['stderr']);
+
+            if (str_contains(strtolower($stdout . $stderr), 'already started')) {
+                return [
+                    'success' => true,
+                    'message' => 'Процесс уже запущен.',
+                ];
+            }
+
             return [
                 'success' => false,
-                'message' => trim($result['stderr']) ?: 'Failed to start supervisor process.',
+                'message' => $stderr ?: 'Failed to start supervisor process.',
             ];
         }
 
@@ -228,9 +226,19 @@ class ProcessManagerService
         $result = $this->runShellCommand("{$binary} stop {$target}");
 
         if ($result['exit_code'] !== 0) {
+            $stdout = trim($result['stdout']);
+            $stderr = trim($result['stderr']);
+
+            if (str_contains(strtolower($stdout . $stderr), 'not running')) {
+                return [
+                    'success' => true,
+                    'message' => 'Процесс уже остановлен.',
+                ];
+            }
+
             return [
                 'success' => false,
-                'message' => trim($result['stderr']) ?: 'Failed to stop supervisor process.',
+                'message' => $stderr ?: 'Failed to stop supervisor process.',
             ];
         }
 
@@ -457,6 +465,45 @@ class ProcessManagerService
         $value = is_numeric($value) ? (int) $value : $default;
 
         return max(60, $value);
+    }
+
+    protected function parseSupervisorStatusLine(string $statusLine): array
+    {
+        $normalized = strtolower($statusLine);
+        $status = 'unknown';
+        $pid = null;
+        $uptime = null;
+
+        if (str_contains($normalized, 'running')) {
+            $status = 'running';
+        } elseif (str_contains($normalized, 'stopped')) {
+            $status = 'stopped';
+        } elseif (str_contains($normalized, 'starting')) {
+            $status = 'starting';
+        } elseif (str_contains($normalized, 'backoff')) {
+            $status = 'backoff';
+        } elseif (str_contains($normalized, 'exited')) {
+            $status = 'exited';
+        } elseif (str_contains($normalized, 'fatal')) {
+            $status = 'fatal';
+        }
+
+        if (preg_match('/pid\s+(\d+)/i', $statusLine, $matches)) {
+            $pid = (int) $matches[1];
+        }
+
+        if (preg_match('/uptime\s+([^\s]+)/i', $statusLine, $matches)) {
+            $uptime = $matches[1];
+        }
+
+        return [
+            'status' => $status,
+            'details' => [
+                'raw' => $statusLine,
+                'pid' => $pid,
+                'uptime' => $uptime,
+            ],
+        ];
     }
 
     protected function findWindowsProcessId(string $commandLine): ?int
