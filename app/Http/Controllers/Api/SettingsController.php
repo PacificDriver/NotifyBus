@@ -150,7 +150,7 @@ class SettingsController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'group' => 'required|string|in:whatsapp,email,carrier_api,external_db,notification,importer',
+            'group' => 'required|string|in:whatsapp,email,carrier_api,external_db,notification,importer,mysql_bridge',
             'settings' => 'required|array',
         ]);
 
@@ -851,6 +851,7 @@ class SettingsController extends Controller
             'email' => ['password'],
             'carrier_api' => ['key'],
             'external_db' => ['password'],
+            'mysql_bridge' => ['password'],
             default => [],
         };
     }
@@ -911,7 +912,7 @@ class SettingsController extends Controller
             return 'integer';
         }
         
-        if (str_contains($key, '_enabled') || str_contains($key, 'use_')) {
+        if (str_contains($key, '_enabled') || str_contains($key, 'use_') || str_contains($key, '_only_')) {
             return 'boolean';
         }
         

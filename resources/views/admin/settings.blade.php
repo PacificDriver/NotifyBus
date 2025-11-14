@@ -510,6 +510,7 @@
                     <button class="tab" data-tab-target="carrier" onclick="switchTab('carrier', this)">🚌 API Перевозчика</button>
                     <button class="tab" data-tab-target="notification" onclick="switchTab('notification', this)">🔔 Уведомления</button>
                     <button class="tab" data-tab-target="importer" onclick="switchTab('importer', this)">🚍 Импорт</button>
+                    <button class="tab" data-tab-target="mysql_bridge" onclick="switchTab('mysql_bridge', this)">🗄 MySQL</button>
                     <button class="tab" data-tab-target="templates" onclick="switchTab('templates', this)">📝 Шаблоны</button>
                     <button class="tab" data-tab-target="search_history" onclick="switchTab('search_history', this)">🕘 История поиска</button>
                     <button class="tab" data-tab-target="operators" onclick="switchTab('operators', this)">👥 Операторы</button>
@@ -719,6 +720,88 @@
                 </form>
             </div>
 
+            <div id="mysql_bridge-tab" class="tab-content">
+                <h2>MySQL импорт и синхронизация</h2>
+                <p style="color:#666; margin-bottom:18px;">Загрузите дамп pb_order_item вручную или настройте безопасное подключение к удалённой MySQL, чтобы синхронизировать только новые данные по расписанию.</p>
+
+                <div class="card" style="padding:20px; margin-bottom:20px;">
+                    <h3 style="margin-bottom:10px;">⬆️ Загрузка дампа</h3>
+                    <form id="mysql-upload-form" enctype="multipart/form-data">
+                        <div class="form-group">
+                            <label for="mysql_dump_file">Файл дампа (.sql или .sql.gz)</label>
+                            <input type="file" id="mysql_dump_file" name="dump" accept=".sql,.gz,.txt" required>
+                            <small>Файл не должен превышать 512 МБ. Импортируется только таблица pb_order_item.</small>
+                        </div>
+                        <label class="checkbox-inline" style="margin-bottom:15px;">
+                            <input type="checkbox" id="mysql_upload_only_new" name="only_new" checked>
+                            Добавлять только новые записи (оставшиеся будут пропущены)
+                        </label>
+                        <div class="btn-group">
+                            <button type="submit" class="btn btn-primary">📥 Загрузить и импортировать</button>
+                        </div>
+                    </form>
+                    <div id="mysql-upload-result" style="margin-top:15px;"></div>
+                </div>
+
+                <div class="card" style="padding:20px;">
+                    <h3 style="margin-bottom:10px;">🔌 Удалённое подключение и расписание</h3>
+                    <form id="mysql-connection-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="mysql_bridge_host">Хост</label>
+                                <input type="text" id="mysql_bridge_host" name="host" placeholder="mysql.example.org">
+                            </div>
+                            <div class="form-group">
+                                <label for="mysql_bridge_port">Порт</label>
+                                <input type="number" id="mysql_bridge_port" name="port" value="3306" min="1" max="65535">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="mysql_bridge_database">База данных</label>
+                                <input type="text" id="mysql_bridge_database" name="database" placeholder="carrier_replica">
+                            </div>
+                            <div class="form-group">
+                                <label for="mysql_bridge_table">Таблица с данными</label>
+                                <input type="text" id="mysql_bridge_table" name="table" placeholder="pb_order_item">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="mysql_bridge_username">Пользователь</label>
+                                <input type="text" id="mysql_bridge_username" name="username" placeholder="replica_user">
+                            </div>
+                            <div class="form-group">
+                                <label for="mysql_bridge_password">Пароль</label>
+                                <input type="password" id="mysql_bridge_password" name="password" placeholder="••••••">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="mysql_bridge_primary_key">Поле первичного ключа</label>
+                                <input type="text" id="mysql_bridge_primary_key" name="primary_key" value="ID">
+                                <small>Используется для инкрементальной синхронизации.</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="mysql_bridge_sync_interval_minutes">Интервал синхронизации (минуты)</label>
+                                <input type="number" id="mysql_bridge_sync_interval_minutes" name="sync_interval_minutes" value="10" min="1" max="720">
+                                <small>Используется процессом «Синхронизация MySQL».</small>
+                            </div>
+                        </div>
+                        <label class="checkbox-inline" style="margin-bottom:15px;">
+                            <input type="checkbox" id="mysql_bridge_sync_only_new" name="sync_only_new" checked>
+                            Переносить только новые записи при синхронизации
+                        </label>
+                        <div class="btn-group">
+                            <button type="submit" class="btn btn-primary">💾 Сохранить</button>
+                            <button type="button" class="btn btn-success" id="mysql-test-connection">🔍 Проверить подключение</button>
+                            <button type="button" class="btn btn-secondary" id="mysql-run-sync">⚡ Синхронизировать сейчас</button>
+                        </div>
+                    </form>
+                    <div id="mysql-sync-status" style="margin-top:15px;"></div>
+                </div>
+            </div>
+
             <div id="templates-tab" class="tab-content">
                 <h2>Шаблоны сообщений</h2>
                 <p style="color:#666; margin-bottom:15px;">Шаблоны используются при рассылке писем и WhatsApp-сообщений. Используйте переменные вида @{{passenger_full_name}} или @{{trip_number}} — список доступен под формой.</p>
@@ -869,7 +952,11 @@
             initialized: false,
             list: [],
         };
-        const AVAILABLE_TABS = ['whatsapp', 'email', 'carrier', 'notification', 'importer', 'templates', 'search_history', 'operators'];
+        const mysqlTabState = {
+            initialized: false,
+            lastStatus: null,
+        };
+        const AVAILABLE_TABS = ['whatsapp', 'email', 'carrier', 'notification', 'importer', 'mysql_bridge', 'templates', 'search_history', 'operators'];
         const DEFAULT_TAB = 'whatsapp';
 
         const modalElements = {
@@ -945,8 +1032,10 @@
         document.addEventListener('DOMContentLoaded', function() {
             initializeModal();
             initImporterControls();
+            initializeMysqlTab();
             applyInitialTabFromHash();
             loadSettings();
+            loadMysqlStatus();
             initTemplateManagerSettings();
             window.addEventListener('hashchange', applyInitialTabFromHash);
         });
@@ -982,6 +1071,13 @@
 
             if (targetTab === 'operators' && !operatorsState.initialized) {
                 initializeOperatorsTab();
+            }
+
+            if (targetTab === 'mysql_bridge') {
+                initializeMysqlTab();
+                if (!mysqlTabState.lastStatus) {
+                    loadMysqlStatus();
+                }
             }
         }
 
@@ -1020,6 +1116,7 @@
                             importerSettings.source_table = 'pb_order_item';
                         }
                         fillForm('importer', importerSettings);
+                        fillForm('mysql_bridge', data.data.mysql_bridge || {});
                 }
             } catch (error) {
                 showAlert('⚠️ В текущий момент сервис недоступен.\n\nОшибка при загрузке настроек: ' + error.message + '\n\nОбратитесь к администратору.', 'error');
@@ -1036,7 +1133,19 @@
                 }
                 return;
             }
+
+            if (group === 'mysql_bridge') {
+                const minutesInput = document.getElementById('mysql_bridge_sync_interval_minutes');
+                if (minutesInput) {
+                    const seconds = parseInt(settings.sync_interval_seconds ?? 600, 10);
+                    minutesInput.value = Math.max(1, Math.round(seconds / 60));
+                }
+            }
+
             Object.keys(settings).forEach(key => {
+                if (group === 'mysql_bridge' && key === 'sync_interval_seconds') {
+                    return;
+                }
                 const input = document.querySelector(`#${group}_${key}`);
                 if (input) {
                     if (input.type === 'checkbox') {
@@ -1088,6 +1197,37 @@
             updateImporterInputs(initialMinutes * 60);
         }
 
+        function initializeMysqlTab() {
+            if (mysqlTabState.initialized) {
+                return;
+            }
+
+            const connectionForm = document.getElementById('mysql-connection-form');
+            if (connectionForm) {
+                connectionForm.addEventListener('submit', async (event) => {
+                    event.preventDefault();
+                    await saveSettings('mysql_bridge', new FormData(connectionForm));
+                });
+            }
+
+            const uploadForm = document.getElementById('mysql-upload-form');
+            if (uploadForm) {
+                uploadForm.addEventListener('submit', handleMysqlDumpUpload);
+            }
+
+            const testButton = document.getElementById('mysql-test-connection');
+            if (testButton) {
+                testButton.addEventListener('click', testMysqlConnection);
+            }
+
+            const syncButton = document.getElementById('mysql-run-sync');
+            if (syncButton) {
+                syncButton.addEventListener('click', runMysqlSync);
+            }
+
+            mysqlTabState.initialized = true;
+        }
+
         // Обработчики форм
         document.getElementById('whatsapp-form').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1134,6 +1274,32 @@
                     interval_seconds: Math.max(60, Math.round(minutesValue * 60)),
                     source_table: tableValue,
                 };
+            }
+
+            if (group === 'mysql_bridge') {
+                const payload = {};
+                ['host', 'port', 'database', 'username', 'password', 'table', 'primary_key'].forEach((key) => {
+                    const value = formData.get(key);
+                    if (typeof value === 'string' && value.trim() !== '') {
+                        const trimmed = value.trim();
+                        if (key === 'port') {
+                            const port = parseInt(trimmed, 10);
+                            if (!Number.isNaN(port)) {
+                                payload.port = port;
+                            }
+                        } else if (key === 'password' && (trimmed.startsWith('***') || trimmed.startsWith('tok***'))) {
+                            return;
+                        } else {
+                            payload[key] = trimmed;
+                        }
+                    }
+                });
+
+                const minutes = parseFloat(formData.get('sync_interval_minutes') || '10');
+                payload.sync_interval_seconds = Math.max(60, Math.round((Number.isFinite(minutes) ? minutes : 10) * 60));
+                payload.sync_only_new = document.getElementById('mysql_bridge_sync_only_new')?.checked ?? true;
+
+                return payload;
             }
 
             const settings = {};
@@ -1195,11 +1361,214 @@
 
                 if (data.success) {
                     showAlert('✅ ' + (data.message || 'Настройки успешно сохранены в базу данных!'), 'success');
+                    if (group === 'mysql_bridge') {
+                        loadMysqlStatus();
+                    }
                 } else {
                     throw new Error(data.message || 'Неизвестная ошибка');
                 }
             } catch (error) {
                 showAlert('⚠️ В текущий момент сервис недоступен.\n\nОшибка при сохранении: ' + error.message + '\n\nОбратитесь к администратору.', 'error');
+            }
+        }
+
+        function getMysqlConnectionPayload(options = { includeSchedule: false }) {
+            const form = document.getElementById('mysql-connection-form');
+            if (!form) {
+                return {};
+            }
+
+            const formData = new FormData(form);
+            const payload = {};
+            ['host', 'port', 'database', 'username', 'password', 'table', 'primary_key'].forEach((key) => {
+                const value = formData.get(key);
+                if (value && value.toString().trim() !== '') {
+                    payload[key] = value.toString().trim();
+                }
+            });
+
+            if (options.includeSchedule) {
+                const minutes = parseFloat(formData.get('sync_interval_minutes') || '10');
+                payload.sync_interval_minutes = Number.isFinite(minutes) ? minutes : 10;
+                payload.sync_only_new = document.getElementById('mysql_bridge_sync_only_new')?.checked ?? true;
+            }
+
+            return payload;
+        }
+
+        async function handleMysqlDumpUpload(event) {
+            event.preventDefault();
+            const form = document.getElementById('mysql-upload-form');
+            const fileInput = document.getElementById('mysql_dump_file');
+            const results = document.getElementById('mysql-upload-result');
+
+            if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+                showAlert('Выберите файл дампа для загрузки.', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('dump', fileInput.files[0]);
+
+            const onlyNewCheckbox = document.getElementById('mysql_upload_only_new');
+            formData.append('only_new', onlyNewCheckbox?.checked ? '1' : '0');
+
+            results.innerHTML = '<div class="alert alert-info">⏳ Импорт начинается...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/import/mysql/upload`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': token,
+                    },
+                    credentials: 'include',
+                    body: formData,
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || `HTTP ${response.status}`);
+                }
+
+                results.innerHTML = `<div class="alert alert-success">✅ ${data.message || 'Импорт завершен.'}<br>Записей обработано: <strong>${data.data?.estimated_rows ?? '—'}</strong></div>`;
+                form?.reset();
+                if (onlyNewCheckbox) {
+                    onlyNewCheckbox.checked = true;
+                }
+                loadMysqlStatus();
+            } catch (error) {
+                results.innerHTML = `<div class="alert alert-error">⚠️ Ошибка импорта: ${error.message}</div>`;
+            }
+        }
+
+        async function loadMysqlStatus() {
+            const container = document.getElementById('mysql-sync-status');
+            if (!container) {
+                return;
+            }
+
+            container.innerHTML = '<div class="alert alert-info">⏳ Загружаем статус...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/import/mysql`, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || `HTTP ${response.status}`);
+                }
+
+                mysqlTabState.lastStatus = data.data;
+                container.innerHTML = renderMysqlStatus(data.data);
+            } catch (error) {
+                container.innerHTML = `<div class="alert alert-error">⚠️ Не удалось загрузить статус синхронизации: ${error.message}</div>`;
+            }
+        }
+
+        function renderMysqlStatus(payload) {
+            if (!payload) {
+                return '';
+            }
+
+            const lastDump = payload.last_dump;
+            const lastSync = payload.last_sync;
+
+            const dumpText = lastDump
+                ? `Последний импорт: ${formatDateTimeLocal(lastDump.imported_at)} — ~${lastDump.estimated_rows ?? '—'} строк`
+                : 'Дамп ещё не загружался.';
+
+            const syncText = lastSync
+                ? `Последняя синхронизация: ${formatDateTimeLocal(lastSync.finished_at)} — ${lastSync.rows_processed ?? 0} строк`
+                : 'Синхронизация ещё не запускалась.';
+
+            return `
+                <div class="alert alert-info">
+                    <strong>Статус</strong><br>
+                    ${dumpText}<br>
+                    ${syncText}
+                </div>
+            `;
+        }
+
+        async function testMysqlConnection() {
+            const payload = getMysqlConnectionPayload();
+
+            if (!payload.host || !payload.database || !payload.username) {
+                showAlert('Укажите хост, базу данных и пользователя перед проверкой подключения.', 'error');
+                return;
+            }
+
+            showAlert('Проверяем подключение к MySQL...', 'info');
+
+            try {
+                const response = await fetch(`${API_BASE}/import/mysql/test-connection`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ config: payload }),
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || `HTTP ${response.status}`);
+                }
+
+                const rows = data.data?.rows ?? '—';
+                const latestId = data.data?.latest_id ?? '—';
+
+                showAlert(`✅ Подключение успешно.\nСтрок в таблице: ${rows}\nПоследний ID: ${latestId}`, 'success');
+            } catch (error) {
+                showAlert('⚠️ Ошибка подключения к MySQL: ' + error.message, 'error');
+            }
+        }
+
+        async function runMysqlSync() {
+            const statusContainer = document.getElementById('mysql-sync-status');
+            if (!statusContainer) {
+                return;
+            }
+
+            statusContainer.innerHTML = '<div class="alert alert-info">⏳ Синхронизация запускается...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/import/mysql/sync`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        only_new: document.getElementById('mysql_bridge_sync_only_new')?.checked ?? true,
+                    }),
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || `HTTP ${response.status}`);
+                }
+
+                mysqlTabState.lastStatus = data.data;
+                statusContainer.innerHTML = `<div class="alert alert-success">✅ ${data.message}<br>Обработано строк: <strong>${data.data?.rows_processed ?? 0}</strong></div>`;
+            } catch (error) {
+                statusContainer.innerHTML = `<div class="alert alert-error">⚠️ Ошибка синхронизации: ${error.message}</div>`;
             }
         }
 

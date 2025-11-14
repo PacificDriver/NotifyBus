@@ -55,6 +55,17 @@ return [
                 'default_interval' => (int) env('PASSENGER_IMPORT_INTERVAL', 420),
             ],
         ],
+        'mysql_sync' => [
+            'label' => 'Синхронизация MySQL',
+            'type' => 'supervisor',
+            'target' => env('MYSQL_SYNC_TARGET', 'notifybus-mysql-sync'),
+            'log_file' => storage_path('logs/mysql-sync.log'),
+            'description' => 'Поддерживает реплику pb_order_item из удалённой MySQL.',
+            'options' => [
+                'interval_setting' => 'mysql_bridge_sync_interval_seconds',
+                'default_interval' => (int) env('MYSQL_SYNC_INTERVAL', 600),
+            ],
+        ],
     ],
 ];
 

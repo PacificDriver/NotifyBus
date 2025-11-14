@@ -85,6 +85,13 @@ Route::middleware(['auth:web'])->group(function () {
         Route::post('/test/carrier-api', 'App\Http\Controllers\Api\SettingsController@testCarrierApi');
     });
 
+    Route::middleware('role:admin')->prefix('import/mysql')->group(function () {
+        Route::get('/', 'App\Http\Controllers\Api\MySqlImportController@status');
+        Route::post('/upload', 'App\Http\Controllers\Api\MySqlImportController@uploadDump');
+        Route::post('/sync', 'App\Http\Controllers\Api\MySqlImportController@sync');
+        Route::post('/test-connection', 'App\Http\Controllers\Api\MySqlImportController@testConnection');
+    });
+
     // Управление процессами (только администратор)
     Route::prefix('processes')->middleware('role:admin')->group(function () {
         Route::get('/', 'App\Http\Controllers\Api\ProcessController@index');
