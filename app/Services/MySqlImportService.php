@@ -40,7 +40,8 @@ class MySqlImportService
 
         $absolutePath = Storage::path($storedPath);
         $sqlPath = $this->prepareDumpFile($absolutePath);
-        $statements = $this->extractInsertStatements($sqlPath, $targetTable, $onlyNew);
+        $primaryKey = trim((string) Setting::get('mysql_bridge_primary_key', 'ID'), '`"') ?: 'ID';
+        $statements = $this->extractInsertStatements($sqlPath, $targetTable, $onlyNew, $primaryKey);
 
         DB::beginTransaction();
         $estimatedRows = 0;
@@ -252,7 +253,7 @@ class MySqlImportService
     /**
      * @return array<int,string>
      */
-    protected function extractInsertStatements(string $path, string $targetTable, bool $onlyNew): array
+    protected function extractInsertStatements(string $path, string $targetTable, bool $onlyNew, string $primaryKey): array
     {
         $handle = fopen($path, 'rb');
 
@@ -283,7 +284,7 @@ class MySqlImportService
                 continue;
             }
 
-            $normalized = $this->normalizeInsertStatement($statement, $targetTable, $onlyNew);
+            $normalized = $this->normalizeInsertStatement($statement, $targetTable, $onlyNew, $primaryKey);
 
             if ($normalized) {
                 $statements[] = $normalized;
@@ -299,7 +300,7 @@ class MySqlImportService
         return $statements;
     }
 
-    protected function normalizeInsertStatement(string $statement, string $targetTable, bool $onlyNew): ?string
+    protected function normalizeInsertStatement(string $statement, string $targetTable, bool $onlyNew, string $primaryKey): ?string
     {
         $pattern = '/INSERT\s+(?:IGNORE\s+)?INTO\s+`?([^\s`(]+)`?/i';
 
@@ -307,8 +308,21 @@ class MySqlImportService
             return null;
         }
 
-        $replacement = 'INSERT ' . ($onlyNew ? 'IGNORE ' : '') . 'INTO `' . $targetTable . '`';
-        $statement = preg_replace($pattern, $replacement, $statement, 1);
+        $driver = DB::getDriverName();
+
+        if ($driver === 'mysql') {
+            $replacement = 'INSERT ' . ($onlyNew ? 'IGNORE ' : '') . 'INTO `' . $targetTable . '`';
+            $statement = preg_replace($pattern, $replacement, $statement, 1);
+        } else {
+            $replacement = 'INSERT INTO "' . $targetTable . '"';
+            $statement = preg_replace($pattern, $replacement, $statement, 1);
+            $statement = str_replace('`', '"', $statement);
+
+            if ($onlyNew) {
+                $statement = rtrim($statement, ';');
+                $statement .= sprintf(' ON CONFLICT ("%s") DO NOTHING;', $primaryKey);
+            }
+        }
 
         if (!Str::endsWith($statement, ';')) {
             $statement .= ';';
