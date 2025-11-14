@@ -34,6 +34,8 @@ return [
     |  - options: Optional array with additional params per type
     |
     */
+    'php_binary' => env('PHP_BINARY_PATH', PHP_BINDIR . DIRECTORY_SEPARATOR . 'php'),
+
     'processes' => [
         'notification_worker' => [
             'label' => 'Worker уведомлений',

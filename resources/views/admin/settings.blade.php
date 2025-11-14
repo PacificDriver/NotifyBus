@@ -721,7 +721,7 @@
 
             <div id="templates-tab" class="tab-content">
                 <h2>Шаблоны сообщений</h2>
-                <p style="color:#666; margin-bottom:15px;">Шаблоны используются при рассылке писем и WhatsApp-сообщений. Используйте переменные вида {{passenger_full_name}} или {{trip_number}} — список доступен под формой.</p>
+                <p style="color:#666; margin-bottom:15px;">Шаблоны используются при рассылке писем и WhatsApp-сообщений. Используйте переменные вида @{{passenger_full_name}} или @{{trip_number}} — список доступен под формой.</p>
                 <div id="template-manager-settings" class="template-manager">
                     <div class="template-manager-header">
                         <div>
@@ -754,11 +754,11 @@
                             </label>
                             <label class="full-width">
                                 Текст сообщения
-                                <textarea name="body" rows="4" required placeholder="Здравствуйте, {{passenger_full_name}}..."></textarea>
+                                <textarea name="body" rows="4" required placeholder="Здравствуйте, @{{passenger_full_name}}..."></textarea>
                             </label>
                             <label class="full-width">
                                 Доступные переменные (через запятую)
-                                <input type="text" name="available_variables" placeholder="{{passenger_full_name}}, {{trip_number}}, {{departure_time}}">
+                                <input type="text" name="available_variables" placeholder="@{{passenger_full_name}}, @{{trip_number}}, @{{departure_time}}">
                             </label>
                             <label class="checkbox-inline">
                                 <input type="checkbox" name="is_active" checked>
@@ -774,10 +774,10 @@
                     <div style="background:#f8faff; border:1px dashed #cdd5ff; border-radius:12px; padding:16px;">
                         <strong>Популярные переменные:</strong>
                         <ul style="margin-top:8px; padding-left:18px; color:#555; line-height:1.5;">
-                            <li>{{passenger_full_name}}, {{passenger_first_name}}</li>
-                            <li>{{trip_number}}, {{departure_station}}, {{arrival_station}}</li>
-                            <li>{{departure_time}}, {{departure_date}}, {{departure_time_only}}</li>
-                            <li>{{seat_number}}, {{cancellation_reason}}</li>
+                            <li>@{{passenger_full_name}}, @{{passenger_first_name}}</li>
+                            <li>@{{trip_number}}, @{{departure_station}}, @{{arrival_station}}</li>
+                            <li>@{{departure_time}}, @{{departure_date}}, @{{departure_time_only}}</li>
+                            <li>@{{seat_number}}, @{{cancellation_reason}}</li>
                         </ul>
                     </div>
                 </div>

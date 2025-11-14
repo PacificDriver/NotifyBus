@@ -664,6 +664,21 @@
                 <div class="template-manager-header">
                     <div>
                         <p class="muted-text">Создавайте и редактируйте тексты WhatsApp и Email перед массовой рассылкой.</p>
+                        <div style="margin-top:10px; padding:12px; border-radius:10px; border:1px dashed #cdd5ff; background:#f8faff;">
+                            <strong style="display:block; margin-bottom:6px;">Доступные переменные:</strong>
+                            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                                <span class="badge badge-warning">@{{passenger_full_name}}</span>
+                                <span class="badge badge-warning">@{{passenger_first_name}}</span>
+                                <span class="badge badge-warning">@{{trip_number}}</span>
+                                <span class="badge badge-warning">@{{departure_station}}</span>
+                                <span class="badge badge-warning">@{{arrival_station}}</span>
+                                <span class="badge badge-warning">@{{departure_time}}</span>
+                                <span class="badge badge-warning">@{{departure_date}}</span>
+                                <span class="badge badge-warning">@{{seat_number}}</span>
+                                <span class="badge badge-warning">@{{cancellation_reason}}</span>
+                            </div>
+                            <small style="display:block; margin-top:8px; color:#6c6f85;">Используйте @{{variable_name}} внутри темы и текста. Полный список доступен на вкладке «Шаблоны» в настройках.</small>
+                        </div>
                     </div>
                     <button type="button" class="btn btn-secondary template-toggle-create">➕ Новый шаблон</button>
                 </div>
@@ -692,11 +707,11 @@
                         </label>
                         <label class="full-width">
                             Текст сообщения
-                            <textarea name="body" rows="4" required placeholder="Уважаемый {{passenger_full_name}}, сообщаем об отмене рейса {{trip_number}}..."></textarea>
+                            <textarea name="body" rows="4" required placeholder="Уважаемый @{{passenger_full_name}}, сообщаем об отмене рейса @{{trip_number}}..."></textarea>
                         </label>
                         <label class="full-width">
                             Доступные переменные (через запятую)
-                            <input type="text" name="available_variables" placeholder="{{passenger_full_name}}, {{trip_number}}, {{departure_time}}">
+                            <input type="text" name="available_variables" placeholder="@{{passenger_full_name}}, @{{trip_number}}, @{{departure_time}}">
                         </label>
                         <label class="checkbox-inline">
                             <input type="checkbox" name="is_active" checked>

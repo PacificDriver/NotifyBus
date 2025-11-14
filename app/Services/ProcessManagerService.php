@@ -67,12 +67,17 @@ class ProcessManagerService
         $definition = $this->resolveDefinition($name);
         $logFile = $definition['log_file'] ?? null;
 
-        if (!$logFile || !File::exists($logFile)) {
+        if (!$logFile) {
             return [
                 'success' => false,
-                'message' => 'Log file not found for process: ' . $name,
+                'message' => 'Log file path is not configured for process: ' . $name,
                 'data' => [],
             ];
+        }
+
+        if (!File::exists($logFile)) {
+            File::ensureDirectoryExists(dirname($logFile));
+            File::put($logFile, '');
         }
 
         $lines = $lines ?? (int) config('processes.default_log_lines', 200);
@@ -373,7 +378,11 @@ class ProcessManagerService
 
     protected function runArtisanInBackground(string $commandLine, string $logFile): ?int
     {
-        $php = escapeshellarg(PHP_BINARY);
+        $phpBinary = config('processes.php_binary', env('PHP_BINARY_PATH', PHP_BINDIR . DIRECTORY_SEPARATOR . 'php'));
+        if (!is_executable($phpBinary)) {
+            $phpBinary = 'php';
+        }
+        $php = escapeshellarg($phpBinary);
         $base = escapeshellarg(base_path());
         $log = escapeshellarg($logFile);
 
