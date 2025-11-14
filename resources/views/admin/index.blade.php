@@ -113,6 +113,137 @@
             line-height: 1.6;
         }
 
+        .process-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+            gap: 20px;
+        }
+
+        .process-item {
+            background: #fff;
+            border-radius: 14px;
+            border: 1px solid #e1e7ff;
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.06);
+            padding: 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .process-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: flex-start;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 12px;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge-running {
+            background: #d3f9d8;
+            color: #2f9e44;
+        }
+
+        .badge-stopped, .badge-exited, .badge-completed {
+            background: #ffe3e3;
+            color: #fa5252;
+        }
+
+        .badge-starting {
+            background: #fff3bf;
+            color: #f59f00;
+        }
+
+        .badge-error, .badge-backoff {
+            background: #ffe3e3;
+            color: #c92a2a;
+        }
+
+        .badge-unknown, .badge-idle {
+            background: #e7f5ff;
+            color: #1c7ed6;
+        }
+
+        .process-description {
+            color: #5f6573;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .process-meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+        }
+
+        .process-meta div {
+            background: #f8faff;
+            border-radius: 10px;
+            padding: 12px;
+            border: 1px solid #e7edff;
+        }
+
+        .process-meta dt {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #748ffc;
+            margin-bottom: 4px;
+        }
+
+        .process-meta dd {
+            margin: 0;
+            font-size: 0.92rem;
+            color: #374151;
+        }
+
+        .process-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .log-output {
+            background: #0d1b2a;
+            color: #dcecfb;
+            padding: 16px;
+            border-radius: 10px;
+            max-height: 420px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-family: "Fira Code", "SFMono-Regular", ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 0.85rem;
+            border: 1px solid #1f3a5f;
+        }
+
+        .log-output::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .log-output::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+        }
+
+        .muted-text {
+            color: #6c757d;
+        }
+
+        .error-text {
+            color: #c92a2a;
+            font-weight: 600;
+        }
+
         .setting-actions {
             display: flex;
             flex-wrap: wrap;
@@ -405,6 +536,14 @@
                 </div>
             </div>
         </div>
+
+        <div class="card">
+            <h2>Управление процессами</h2>
+            <p class="muted-text" style="margin-bottom: 18px;">Контролируйте процессы импорта и очередей рассылки. Можно запустить, остановить, перезапустить и посмотреть свежие логи.</p>
+            <div id="processes-list" class="process-grid">
+                <div class="process-item muted-text">Загрузка данных о процессах...</div>
+            </div>
+        </div>
         
         <div class="card">
             <h2>Статус сервисов</h2>
@@ -599,6 +738,7 @@
             }
 
             document.addEventListener('DOMContentLoaded', () => {
+                initProcessControls();
                 if (ensureModalElements() && !modalElements.initialized) {
                     modalElements.closeBtn.addEventListener('click', closeModal);
                     modalElements.root.addEventListener('click', (event) => {
@@ -612,6 +752,265 @@
 
                 checkServicesStatus();
             });
+
+            const processState = {
+                autoRefreshTimer: null,
+                refreshIntervalMs: 45000,
+            };
+
+            function initProcessControls() {
+                loadProcesses();
+
+                if (processState.autoRefreshTimer) {
+                    clearInterval(processState.autoRefreshTimer);
+                }
+                processState.autoRefreshTimer = setInterval(loadProcesses, processState.refreshIntervalMs);
+
+                document.addEventListener('click', (event) => {
+                    const actionButton = event.target.closest('[data-process-action]');
+                    if (!actionButton) {
+                        return;
+                    }
+
+                    const container = actionButton.closest('[data-process-name]');
+                    if (!container) {
+                        return;
+                    }
+
+                    const action = actionButton.dataset.processAction;
+                    const name = container.dataset.processName;
+                    const label = container.dataset.processLabel || name;
+
+                    handleProcessAction(action, name, label, actionButton);
+                }, { passive: false });
+            }
+
+            function escapeHtml(value) {
+                if (value === undefined || value === null) {
+                    return '';
+                }
+
+                return value
+                    .toString()
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
+
+            function formatStatusBadge(process) {
+                const status = (process.status || 'unknown').toLowerCase();
+
+                const statusLabels = {
+                    running: 'Работает',
+                    starting: 'Запуск',
+                    stopped: 'Остановлен',
+                    exited: 'Завершен',
+                    completed: 'Завершен',
+                    backoff: 'Ошибка запуска',
+                    error: 'Ошибка',
+                    idle: 'Ожидание',
+                    pending: 'В ожидании',
+                };
+
+                const badgeClass = `badge-${status}`;
+                const label = statusLabels[status] || status;
+
+                return `<span class="status-badge ${badgeClass}">${escapeHtml(label)}</span>`;
+            }
+
+            function formatDateTime(value) {
+                if (!value) {
+                    return '—';
+                }
+
+                const date = new Date(value);
+                if (isNaN(date.getTime())) {
+                    return escapeHtml(value);
+                }
+
+                return date.toLocaleString('ru-RU');
+            }
+
+            function renderProcessCard(process) {
+                const details = process.details || {};
+                const statusBadge = formatStatusBadge(process);
+                const command = details.command ? escapeHtml(details.command) : '—';
+                const pid = details.pid ? escapeHtml(details.pid) : '—';
+                const startedAt = formatDateTime(details.started_at);
+                const finishedAt = formatDateTime(details.finished_at);
+                const description = escapeHtml(process.description || '');
+
+                return `
+                    <div class="process-item" data-process-name="${escapeHtml(process.name)}" data-process-label="${escapeHtml(process.label)}">
+                        <div class="process-header">
+                            <div>
+                                <h3 style="margin-bottom: 6px;">${escapeHtml(process.label)}</h3>
+                                <p class="process-description">${description || '—'}</p>
+                            </div>
+                            ${statusBadge}
+                        </div>
+                        <div class="process-meta">
+                            <div>
+                                <dt>Команда</dt>
+                                <dd>${command}</dd>
+                            </div>
+                            <div>
+                                <dt>PID</dt>
+                                <dd>${pid}</dd>
+                            </div>
+                            <div>
+                                <dt>Начало</dt>
+                                <dd>${startedAt}</dd>
+                            </div>
+                            <div>
+                                <dt>Завершение</dt>
+                                <dd>${finishedAt}</dd>
+                            </div>
+                        </div>
+                        <div class="process-actions">
+                            <button class="btn btn-primary" data-process-action="start">Запустить</button>
+                            <button class="btn btn-secondary" data-process-action="restart">Перезапустить</button>
+                            <button class="btn btn-danger" data-process-action="stop">Остановить</button>
+                            <button class="btn btn-text" data-process-action="logs">Показать логи</button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            async function loadProcesses() {
+                const container = document.getElementById('processes-list');
+                if (!container) {
+                    return;
+                }
+
+                container.dataset.loading = 'true';
+
+                try {
+                    const response = await fetch('/api/processes', {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'include',
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const payload = await response.json();
+                    const processes = Array.isArray(payload.data) ? payload.data : [];
+
+                    if (!processes.length) {
+                        container.innerHTML = '<div class="muted-text">Нет зарегистрированных процессов. Добавьте конфигурацию в config/processes.php.</div>';
+                        return;
+                    }
+
+                    container.innerHTML = processes.map(renderProcessCard).join('');
+                } catch (error) {
+                    console.error('Failed to load processes:', error);
+                    container.innerHTML = `<div class="process-item error-text">Не удалось загрузить процессы: ${escapeHtml(error.message || error)}</div>`;
+                } finally {
+                    delete container.dataset.loading;
+                }
+            }
+
+            async function handleProcessAction(action, name, label, buttonEl) {
+                if (action === 'logs') {
+                    await showProcessLogs(name, label);
+                    return;
+                }
+
+                const meta = {
+                    start: { endpoint: 'start', loadingText: 'Запуск...', successTitle: 'Процесс запущен', successType: 'success' },
+                    stop: { endpoint: 'stop', loadingText: 'Остановка...', successTitle: 'Процесс остановлен', successType: 'info' },
+                    restart: { endpoint: 'restart', loadingText: 'Перезапуск...', successTitle: 'Процесс перезапущен', successType: 'success' },
+                }[action];
+
+                if (!meta) {
+                    console.warn('Unknown process action:', action);
+                    return;
+                }
+
+                const originalText = buttonEl ? buttonEl.textContent : null;
+
+                if (buttonEl) {
+                    buttonEl.disabled = true;
+                    buttonEl.textContent = meta.loadingText;
+                }
+
+                try {
+                    const response = await fetch(`/api/processes/${encodeURIComponent(name)}/${meta.endpoint}`, {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                        },
+                        credentials: 'include',
+                    });
+
+                    const result = await response.json();
+
+                    const success = !!result.success;
+                    const message = result.message || (success ? meta.successTitle : 'Запрос завершился с ошибкой');
+
+                    showModal({
+                        type: success ? meta.successType : 'error',
+                        title: `${meta.successTitle} — ${label}`,
+                        message,
+                    });
+                } catch (error) {
+                    console.error('Failed to execute action:', error);
+                    showModal({
+                        type: 'error',
+                        title: `Ошибка — ${label}`,
+                        message: error.message || 'Не удалось выполнить действие.',
+                    });
+                } finally {
+                    if (buttonEl) {
+                        buttonEl.disabled = false;
+                        buttonEl.textContent = originalText;
+                    }
+                    loadProcesses();
+                }
+            }
+
+            async function showProcessLogs(name, label) {
+                try {
+                    const response = await fetch(`/api/processes/${encodeURIComponent(name)}/logs`, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'include',
+                    });
+
+                    const result = await response.json();
+
+                    if (!result.success) {
+                        throw new Error(result.message || 'Не удалось получить логи');
+                    }
+
+                    const logLines = (result.data?.log || []).join('\n');
+                    const logPath = result.data?.path ? `<div class="muted-text" style="margin-bottom: 12px;">Источник: ${escapeHtml(result.data.path)}</div>` : '';
+
+                    showModal({
+                        type: 'info',
+                        title: `Логи процесса — ${label}`,
+                        message: `${logPath}<pre class="log-output">${escapeHtml(logLines || 'Лог пуст')}</pre>`,
+                    });
+                } catch (error) {
+                    console.error('Failed to load process logs:', error);
+                    showModal({
+                        type: 'error',
+                        title: `Ошибка получения логов — ${label}`,
+                        message: error.message || 'Не удалось получить логи процесса.',
+                    });
+                }
+            }
         </script>
     </div>
 </body>

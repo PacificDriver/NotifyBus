@@ -85,6 +85,16 @@ Route::middleware(['auth:web'])->group(function () {
         Route::post('/test/carrier-api', 'App\Http\Controllers\Api\SettingsController@testCarrierApi');
     });
 
+    // Управление процессами (только администратор)
+    Route::prefix('processes')->middleware('role:admin')->group(function () {
+        Route::get('/', 'App\Http\Controllers\Api\ProcessController@index');
+        Route::get('/{name}', 'App\Http\Controllers\Api\ProcessController@show');
+        Route::post('/{name}/start', 'App\Http\Controllers\Api\ProcessController@start');
+        Route::post('/{name}/stop', 'App\Http\Controllers\Api\ProcessController@stop');
+        Route::post('/{name}/restart', 'App\Http\Controllers\Api\ProcessController@restart');
+        Route::get('/{name}/logs', 'App\Http\Controllers\Api\ProcessController@logs');
+    });
+
     // Управление операторами (только администратор)
     Route::middleware('role:admin')->prefix('operators')->group(function () {
         Route::get('/', 'App\Http\Controllers\Api\OperatorController@index');
