@@ -20,7 +20,9 @@
 
             this.listElement = this.root.querySelector(this.listSelector);
             this.createForm = this.root.querySelector(this.createFormSelector);
-            this.toggleButton = this.root.querySelector(this.toggleSelector);
+            this.toggleButtons = Array.from(
+                this.root.querySelectorAll(this.toggleSelector)
+            );
 
             if (this.createForm) {
                 this.createForm.addEventListener('submit', (event) => {
@@ -31,13 +33,32 @@
                 this.setupSlugAutoFill(this.createForm);
             }
 
-            if (this.toggleButton && this.createForm) {
-                this.toggleButton.addEventListener('click', () => {
-                    this.createForm.classList.toggle('hidden');
+            if (this.toggleButtons.length && this.createForm) {
+                this.toggleButtons.forEach((button) => {
+                    button.addEventListener('click', () => {
+                        const forceHide =
+                            button.dataset.templateToggle === 'close';
+                        this.toggleCreateForm(forceHide);
+                    });
                 });
             }
 
             this.loadTemplates();
+        }
+
+        toggleCreateForm(forceHide = false) {
+            if (!this.createForm) return;
+
+            if (forceHide) {
+                this.createForm.classList.add('hidden');
+                this.createForm.reset();
+                return;
+            }
+
+            const shouldHide = this.createForm.classList.toggle('hidden');
+            if (shouldHide) {
+                this.createForm.reset();
+            }
         }
 
         async loadTemplates() {

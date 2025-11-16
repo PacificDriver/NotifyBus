@@ -136,19 +136,36 @@ class MySqlImportService
             DB::table($targetTable)->truncate();
         }
 
-        $chunkSize = 500;
+        // Оптимизация: размер чанка настраивается, по умолчанию 500
+        $chunkSize = (int) Arr::get($options, 'chunk_size', Setting::get('mysql_bridge_chunk_size', 500));
+        $chunkSize = max(100, min(1000, $chunkSize)); // Ограничение: 100-1000 строк
+        
         $processed = 0;
         $maxRemoteId = $sinceId;
         $stoppedEarly = false;
+        $startTime = microtime(true);
+        $maxExecutionTime = (int) Arr::get($options, 'max_execution_time', 300); // 5 минут по умолчанию
 
         $query->chunkById($chunkSize, function ($rows) use (
             &$processed,
             &$maxRemoteId,
             &$stoppedEarly,
+            &$startTime,
             $primaryKey,
             $targetTable,
-            $limit
+            $limit,
+            $maxExecutionTime
         ) {
+            // Проверка таймаута
+            if ((microtime(true) - $startTime) > $maxExecutionTime) {
+                Log::warning('MySQL sync timeout reached', [
+                    'processed' => $processed,
+                    'max_time' => $maxExecutionTime,
+                ]);
+                $stoppedEarly = true;
+                return false;
+            }
+
             if (empty($rows)) {
                 return false;
             }
@@ -166,7 +183,30 @@ class MySqlImportService
             }
 
             if (!empty($payloads)) {
-                DB::table($targetTable)->upsert($payloads, [$primaryKey]);
+                $chunkStart = microtime(true);
+                
+                // Оптимизация: используем транзакцию для батча
+                DB::beginTransaction();
+                try {
+                    DB::table($targetTable)->upsert($payloads, [$primaryKey]);
+                    DB::commit();
+                    
+                    $chunkTime = microtime(true) - $chunkStart;
+                    if ($chunkTime > 1.0) { // Логируем медленные чанки (>1 сек)
+                        Log::debug('Slow MySQL sync chunk', [
+                            'rows' => count($payloads),
+                            'time' => round($chunkTime, 2),
+                        ]);
+                    }
+                } catch (\Throwable $e) {
+                    DB::rollBack();
+                    Log::error('MySQL sync chunk failed', [
+                        'error' => $e->getMessage(),
+                        'rows_count' => count($payloads),
+                    ]);
+                    throw $e;
+                }
+                
                 $processed += count($payloads);
             }
 
@@ -180,6 +220,9 @@ class MySqlImportService
 
         DB::purge($connectionName);
 
+        $executionTime = microtime(true) - $startTime;
+        $rowsPerSecond = $processed > 0 ? round($processed / $executionTime, 2) : 0;
+
         $this->rememberSyncState([
             'last_remote_id' => $maxRemoteId,
             'rows_processed' => $processed,
@@ -187,6 +230,17 @@ class MySqlImportService
             'target_table' => $targetTable,
             'remote_table' => $remoteTable,
             'finished_at' => now()->toIso8601String(),
+            'stopped_early' => $stoppedEarly,
+            'execution_time' => round($executionTime, 2),
+            'rows_per_second' => $rowsPerSecond,
+        ]);
+
+        // Логирование производительности
+        Log::info('MySQL sync completed', [
+            'rows_processed' => $processed,
+            'execution_time' => round($executionTime, 2),
+            'rows_per_second' => $rowsPerSecond,
+            'chunk_size' => $chunkSize,
             'stopped_early' => $stoppedEarly,
         ]);
 
@@ -197,6 +251,8 @@ class MySqlImportService
             'target_table' => $targetTable,
             'remote_table' => $remoteTable,
             'stopped_early' => $stoppedEarly,
+            'execution_time' => round($executionTime, 2),
+            'rows_per_second' => $rowsPerSecond,
         ];
     }
 

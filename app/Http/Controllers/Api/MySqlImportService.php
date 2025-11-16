@@ -7,6 +7,7 @@ use App\Models\ImportState;
 use App\Models\Setting;
 use App\Services\MySqlImportService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 
 class MySqlImportController extends Controller
@@ -36,18 +37,18 @@ class MySqlImportController extends Controller
     {
         $validated = $request->validate([
             'dump' => 'required|file|mimes:sql,txt,gz|max:524288',
-            'only_new' => 'nullable|boolean',
         ]);
 
-        $onlyNew = (bool) ($validated['only_new'] ?? true);
-
         try {
-            $result = $this->service->importDump($request->file('dump'), $onlyNew);
+            $result = $this->service->importDump($request->file('dump'), false);
+            $importReport = $this->runImmediateImport();
 
             return response()->json([
                 'success' => true,
                 'message' => 'Дамп успешно импортирован.',
-                'data' => $result,
+                'data' => array_merge($result, [
+                    'import_report' => $importReport,
+                ]),
             ]);
         } catch (\Throwable $e) {
             Log::error('MySQL dump upload failed', [
@@ -95,17 +96,65 @@ class MySqlImportController extends Controller
                 'only_new' => (bool) ($validated['only_new'] ?? true),
                 'limit' => $validated['limit'] ?? null,
             ]);
+            $importReport = $this->runImmediateImport();
 
             return response()->json([
                 'success' => true,
                 'message' => 'Синхронизация завершена.',
-                'data' => $result,
+                'data' => array_merge($result, [
+                    'import_report' => $importReport,
+                ]),
             ]);
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
             ], 400);
+        }
+    }
+
+    /**
+     * Выполнить импорт пассажиров синхронно, чтобы данные стали доступны сразу.
+     *
+     * @param  array<string,mixed>  $options
+     * @return array<string,mixed>
+     */
+    protected function runImmediateImport(array $options = []): array
+    {
+        $commandOptions = [
+            '--since-id' => (int) ($options['since_id'] ?? 0),
+        ];
+
+        if (!empty($options['race_ids']) && is_array($options['race_ids'])) {
+            $commandOptions['--race-id'] = array_values(array_unique($options['race_ids']));
+        }
+
+        try {
+            // Сбрасываем состояние, чтобы импорт прошёл по всему буферу
+            ImportState::where('key', 'pb_order_item')->delete();
+
+            Log::info('Running immediate PbOrderItem import', [
+                'options' => $commandOptions,
+            ]);
+
+            Artisan::call('import:pb-order-items', $commandOptions);
+
+            return [
+                'success' => true,
+                'options' => $commandOptions,
+                'output' => Artisan::output(),
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Failed to run immediate PbOrderItem import', [
+                'options' => $commandOptions,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'options' => $commandOptions,
+                'error' => $e->getMessage(),
+            ];
         }
     }
 }

@@ -732,10 +732,6 @@
                             <input type="file" id="mysql_dump_file" name="dump" accept=".sql,.gz,.txt" required>
                             <small>Файл не должен превышать 512 МБ. Импортируется только таблица pb_order_item.</small>
                         </div>
-                        <label class="checkbox-inline" style="margin-bottom:15px;">
-                            <input type="checkbox" id="mysql_upload_only_new" name="only_new" checked>
-                            Добавлять только новые записи (оставшиеся будут пропущены)
-                        </label>
                         <div class="btn-group">
                             <button type="submit" class="btn btn-primary">📥 Загрузить и импортировать</button>
                         </div>
@@ -810,7 +806,7 @@
                         <div>
                             <p class="muted-text">Все изменения сохраняются сразу и доступны операторам.</p>
                         </div>
-                        <button type="button" class="btn btn-secondary template-toggle-create">➕ Новый шаблон</button>
+                        <button type="button" class="btn btn-secondary template-toggle-create" data-template-toggle="open">➕ Новый шаблон</button>
                     </div>
                     <form class="template-create-form hidden" autocomplete="off">
                         <h3 style="margin-bottom: 10px;">Новый шаблон</h3>
@@ -850,7 +846,7 @@
                         </div>
                         <div class="template-actions">
                             <button type="submit" class="btn btn-primary">Сохранить шаблон</button>
-                            <button type="button" class="btn btn-text template-toggle-create">Отмена</button>
+                            <button type="button" class="btn btn-text template-toggle-create" data-template-toggle="close">Отмена</button>
                         </div>
                     </form>
                     <div class="template-list"></div>
@@ -1410,9 +1406,6 @@
             const formData = new FormData();
             formData.append('dump', fileInput.files[0]);
 
-            const onlyNewCheckbox = document.getElementById('mysql_upload_only_new');
-            formData.append('only_new', onlyNewCheckbox?.checked ? '1' : '0');
-
             results.innerHTML = '<div class="alert alert-info">⏳ Импорт начинается...</div>';
 
             try {
@@ -1433,9 +1426,6 @@
 
                 results.innerHTML = `<div class="alert alert-success">✅ ${data.message || 'Импорт завершен.'}<br>Записей обработано: <strong>${data.data?.estimated_rows ?? '—'}</strong></div>`;
                 form?.reset();
-                if (onlyNewCheckbox) {
-                    onlyNewCheckbox.checked = true;
-                }
                 loadMysqlStatus();
             } catch (error) {
                 results.innerHTML = `<div class="alert alert-error">⚠️ Ошибка импорта: ${error.message}</div>`;

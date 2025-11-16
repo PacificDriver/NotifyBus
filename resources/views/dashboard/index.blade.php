@@ -382,7 +382,7 @@
         </div>
         
         <!-- Шаг 2: Поиск отмененных рейсов -->
-        <div class="card" v-if="currentTask && currentTaskRacesCount === 0">
+        <div class="card" v-if="currentTask && currentTaskRacesCount === 0" ref="stepSearch">
             <h3 style="margin-bottom: 15px; color: #555;">Шаг 2: Найти отмененные рейсы</h3>
             <p style="color: #666; margin-bottom: 20px;">
                 Задача «<strong>@{{ currentTask.title }}</strong>» создана. Теперь найдите отмененные рейсы.
@@ -427,9 +427,6 @@
                 <div style="padding: 12px; background: #fff3cd; border-left: 4px solid #f08c00; border-radius: 4px; margin-bottom: 15px;">
                     <p style="margin: 0; color: #856404;">
                         <strong>ℹ️ Найдено отмененных рейсов: <span style="color: #c92a2a;">@{{ races.length }}</span></strong>
-                    </p>
-                    <p style="margin: 5px 0 0 0; font-size: 0.9rem; color: #856404;">
-                        Все найденные рейсы имеют статус <strong>active = false</strong> (отменены). Выберите рейсы для добавления в задачу.
                     </p>
                 </div>
                 
@@ -511,17 +508,22 @@
         </div>
         
         <!-- Шаг 4: Загрузка пассажиров и отправка -->
-        <div class="card" v-if="currentTask && currentTaskRacesCount > 0">
+        <div class="card" v-if="currentTask && currentTaskRacesCount > 0" ref="stepPassengers">
             <h3 style="margin-bottom: 15px; color: #555;">Шаг 4: Загрузка пассажиров и отправка</h3>
             <p style="margin-bottom: 15px; color: #666;">
                 Задача: <strong>@{{ currentTask.title }}</strong><br>
                 Рейсов в задаче: <strong>@{{ currentTaskRacesCount }}</strong>
             </p>
             
-            <button class="btn btn-primary" @click="loadPassengersForTask" :disabled="loadingPassengers" style="margin-bottom: 20px;">
-                <span v-if="loadingPassengers">⏳ Загрузка пассажиров...</span>
-                <span v-else>📋 Загрузить список пассажиров</span>
-            </button>
+            <div style="margin-bottom: 20px;">
+                <div v-if="loadingPassengers" style="padding: 12px; background: #e8f0fe; border-radius: 8px; color: #1a54b3;">
+                    ⏳ Загружаем список пассажиров...
+                </div>
+                <button v-else type="button" class="btn btn-link" style="padding: 0; color: #1a54b3; text-decoration: underline;"
+                        @click="loadPassengersForTask({ silent: true })">
+                    ↻ Обновить список пассажиров
+                </button>
+            </div>
             
             <!-- Шаг 5: Выбор пассажиров -->
             <div v-if="passengers.length > 0" style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e0e0e0;">
@@ -576,14 +578,38 @@
                     
                     <div class="form-group">
                         <label>Текст сообщения</label>
-                        <textarea v-model="notificationForm.message" rows="6" 
+                        <textarea ref="messageInput"
+                                  v-model="notificationForm.message" rows="6" 
                                   placeholder="Введите текст сообщения или выберите шаблон..."></textarea>
-                        <small style="color: #666; display: block; margin-top: 8px;">
-                            📝 Доступные переменные для подстановки: <strong>{РЕЙС}</strong>, <strong>{ДАТА}</strong>, <strong>{ВРЕМЯ}</strong>
-                        </small>
-                        <small style="color: #888; display: block; margin-top: 4px;">
-                            Пример: "Ваш рейс <strong>{РЕЙС}</strong> на <strong>{ДАТА}</strong> в <strong>{ВРЕМЯ}</strong> отменен."
-                        </small>
+                        <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                            <strong style="font-size:0.95rem; color:#555;">Быстрая вставка переменных:</strong>
+                            <button v-for="variable in variablesPalette"
+                                    :key="`var-${variable.token}`"
+                                    type="button"
+                                    class="btn btn-secondary"
+                                    style="padding:8px 14px; font-size:0.9rem; display:flex; flex-direction:column; align-items:flex-start; gap:2px;"
+                                    @click="insertVariable(variable.token)">
+                                <span style="font-weight:600;">@{{ variable.label }}</span>
+                                <code v-text="variable.token" style="font-size:0.85rem;"></code>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div v-if="snippetTemplates.length" style="margin-top: 20px;">
+                        <h5 style="margin-bottom: 10px; color: #555;">Быстрые вставки</h5>
+                        <p style="color:#777; margin-bottom:12px;">Нажмите «Добавить», чтобы вставить дополнительный текст в сообщение.</p>
+                        <div v-for="snippet in snippetTemplates" :key="`snippet-${snippet.id}`"
+                             style="display:flex; gap:12px; align-items:flex-start; margin-bottom:12px; flex-wrap:wrap;">
+                            <div style="flex:1; min-width:240px;">
+                                <label style="font-weight:600; color:#555;">@{{ snippet.name }}</label>
+                                <textarea :value="snippet.body" rows="3" readonly
+                                          style="width:100%; margin-top:6px; background:#f8f9fa; border:1px solid #e1e1e1; border-radius:8px; padding:10px; font-size:0.95rem;"></textarea>
+                            </div>
+                            <button type="button" class="btn btn-secondary" style="height:42px;"
+                                    @click="appendSnippet(snippet.body)">
+                                ➕ Добавить в сообщение
+                            </button>
+                        </div>
                     </div>
                     
                     <button class="btn btn-success" @click="sendNotifications" 
@@ -680,11 +706,12 @@
     </div>
     
     <script>
+        @verbatim
         const { createApp } = Vue;
         
         createApp({
             data() {
-                const defaultTemplateMessage = '❌ Рейс отменен. Ваш рейс {ДАТА} отправление в {ВРЕМЯ} по маршруту {РЕЙС} отменен.';
+                const defaultTemplateMessage = 'Ваш рейс №{{trip_number}} {{departure_station}} → {{arrival_station}} на {{departure_time}} отменен.';
                 return {
                     stations: [],
                     searchForm: {
@@ -705,8 +732,15 @@
                     selectedPassengers: [], // Выбранные ID пассажиров для отправки
                     passengersLoaded: false,
                     loadingPassengers: false,
+                    autoLoadingPassengers: false,
                     sending: false,
                     defaultTemplateMessage,
+                    variablesPalette: [
+                        { label: 'Номер рейса', token: '{{trip_number}}' },
+                        { label: 'Станция отправления', token: '{{departure_station}}' },
+                        { label: 'Станция прибытия', token: '{{arrival_station}}' },
+                        { label: 'Время отправления', token: '{{departure_time}}' },
+                    ],
                     notificationForm: {
                         templateId: '',
                         message: defaultTemplateMessage
@@ -743,6 +777,16 @@
                         return 0;
                     }
                     return Array.isArray(this.currentTask.races_data) ? this.currentTask.races_data.length : 0;
+                },
+                snippetTemplates() {
+                    const braceRegex = /{{.*?}}/;
+                    return this.templates.filter((template) => {
+                        if (!template || !template.body) {
+                            return false;
+                        }
+                        const body = String(template.body);
+                        return !braceRegex.test(body);
+                    });
                 }
             },
             watch: {
@@ -760,11 +804,15 @@
                 currentTask() {
                     this.$nextTick(() => this.initDatePicker());
                 },
-                currentTaskRacesCount(newVal) {
+                currentTaskRacesCount(newVal, oldVal) {
                     if (newVal === 0) {
                         this.$nextTick(() => this.initDatePicker());
                     } else {
                         this.destroyDatePicker();
+                    }
+
+                    if (newVal > 0 && newVal !== oldVal) {
+                        this.autoLoadPassengers(true);
                     }
                 }
             },
@@ -780,6 +828,12 @@
                 this.destroyDatePicker();
             },
             methods: {
+                scrollToSection(refName) {
+                    const target = this.$refs[refName];
+                    if (target && typeof target.scrollIntoView === 'function') {
+                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                },
                 closeModal() {
                     this.modal.visible = false;
                 },
@@ -849,6 +903,58 @@
                     } else {
                         this.notificationForm.message = this.defaultTemplateMessage;
                     }
+                },
+                appendSnippet(text) {
+                    if (!text) {
+                        return;
+                    }
+                    const snippet = text.trim();
+                    if (!snippet) {
+                        return;
+                    }
+
+                    const current = this.notificationForm.message?.trim() || '';
+                    this.notificationForm.message = current
+                        ? `${current}\n\n${snippet}`
+                        : snippet;
+                },
+                async autoLoadPassengers(scrollAfter = false) {
+                    if (this.loadingPassengers) {
+                        return;
+                    }
+                    this.autoLoadingPassengers = true;
+                    try {
+                        await this.loadPassengersForTask({ silent: true });
+                        if (scrollAfter) {
+                            this.$nextTick(() => this.scrollToSection('stepPassengers'));
+                        }
+                    } catch (error) {
+                        console.error('Auto load passengers failed:', error);
+                    } finally {
+                        this.autoLoadingPassengers = false;
+                    }
+                },
+                insertVariable(variable) {
+                    if (!variable) {
+                        return;
+                    }
+                    const textarea = this.$refs.messageInput;
+                    if (!textarea) {
+                        // Подстраховка: добавляем в конец
+                        this.notificationForm.message = `${this.notificationForm.message || ''}${variable}`;
+                        return;
+                    }
+
+                    const { selectionStart = 0, selectionEnd = 0, value = '' } = textarea;
+                    const before = value.slice(0, selectionStart);
+                    const after = value.slice(selectionEnd);
+                    this.notificationForm.message = `${before}${variable}${after}`;
+
+                    this.$nextTick(() => {
+                        const position = selectionStart + variable.length;
+                        textarea.focus();
+                        textarea.setSelectionRange(position, position);
+                    });
                 },
                 async loadStations() {
                     this.loadingStations = true;
@@ -1107,11 +1213,7 @@
                         
                         if (data.success) {
                             this.currentTask = data.data;
-                            this.showModal({
-                                type: 'success',
-                                title: 'Задача создана успешно',
-                                message: `Название: ${data.data.title}\nID: ${data.data.id}\n\nТеперь найдите отмененные рейсы.`
-                            });
+                            this.$nextTick(() => this.scrollToSection('stepSearch'));
                         } else {
                             throw new Error(data.message || 'Не удалось создать задачу');
                         }
@@ -1173,18 +1275,9 @@
                         const data = await response.json();
                         
                         if (data.success) {
-                            // Обновляем задачу
                             this.currentTask = data.data.task;
-                            this.showModal({
-                                type: 'success',
-                                title: 'Рейсы добавлены',
-                                message: `Добавлено рейсов: ${data.data.added_count}\nВсего рейсов в задаче: ${data.data.total_races}`
-                            });
-                            // Очищаем выбранные рейсы
                             this.selectedRaces = [];
-                            // Опционально: очищаем список найденных рейсов
-                            // this.races = [];
-                            // this.searchPerformed = false;
+                            await this.autoLoadPassengers(true);
                         } else {
                             throw new Error(data.message || 'Не удалось добавить рейсы');
                         }
@@ -1200,22 +1293,27 @@
                     }
                 },
                 
-                async loadPassengersForTask() {
+                async loadPassengersForTask(options = {}) {
+                    const { silent = false } = options;
                     if (!this.currentTask || !this.currentTask.id) {
-                        this.showModal({
-                            type: 'warning',
-                            title: 'Нет активной задачи',
-                            message: 'Сначала создайте задачу, чтобы загрузить пассажиров.'
-                        });
+                        if (!silent) {
+                            this.showModal({
+                                type: 'warning',
+                                title: 'Нет активной задачи',
+                                message: 'Сначала создайте задачу, чтобы загрузить пассажиров.'
+                            });
+                        }
                         return;
                     }
                     
                     if (this.currentTaskRacesCount === 0) {
-                        this.showModal({
-                            type: 'warning',
-                            title: 'Нет рейсов в задаче',
-                            message: 'Добавьте отмененные рейсы в задачу, прежде чем загружать пассажиров.'
-                        });
+                        if (!silent) {
+                            this.showModal({
+                                type: 'warning',
+                                title: 'Нет рейсов в задаче',
+                                message: 'Добавьте отмененные рейсы в задачу, прежде чем загружать пассажиров.'
+                            });
+                        }
                         return;
                     }
                     
@@ -1239,24 +1337,27 @@
                         const data = await response.json();
                         
                         if (data.success) {
-                            // Загружаем список пассажиров для отображения
                             await this.fetchPassengersList();
                             this.passengersLoaded = true;
-                            this.showModal({
-                                type: 'success',
-                                title: 'Пассажиры загружены',
-                                message: `Загружено пассажиров: ${data.data.saved_count || 0}`
-                            });
+                            if (!silent) {
+                                this.showModal({
+                                    type: 'success',
+                                    title: 'Пассажиры загружены',
+                                    message: `Загружено пассажиров: ${data.data.saved_count || 0}`
+                                });
+                            }
                         } else {
                             throw new Error(data.message || 'Не удалось загрузить пассажиров');
                         }
                     } catch (error) {
                         console.error('Error loading passengers:', error);
-                        this.showModal({
-                            type: 'error',
-                            title: 'Ошибка загрузки пассажиров',
-                            message: '⚠️ В текущий момент сервис недоступен.\n\nОшибка при загрузке пассажиров: ' + (error.message || 'Неизвестная ошибка') + '\n\nОбратитесь к администратору для проверки настроек внешней БД.'
-                        });
+                        if (!silent) {
+                            this.showModal({
+                                type: 'error',
+                                title: 'Ошибка загрузки пассажиров',
+                                message: '⚠️ В текущий момент сервис недоступен.\n\nОшибка при загрузке пассажиров: ' + (error.message || 'Неизвестная ошибка') + '\n\nОбратитесь к администратору для проверки настроек внешней БД.'
+                            });
+                        }
                         this.passengersLoaded = false;
                     } finally {
                         this.loadingPassengers = false;
@@ -1533,6 +1634,7 @@
                 }
             }
         }).mount('#app');
+        @endverbatim
     </script>
 </body>
 </html>
