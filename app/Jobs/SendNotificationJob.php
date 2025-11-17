@@ -41,6 +41,27 @@ class SendNotificationJob implements ShouldQueue
 
             $this->notification->markAsQueued();
 
+            // Логируем начало отправки
+            $startLogData = [
+                'notification_id' => $this->notification->id,
+                'channel' => $this->notification->channel,
+                'recipient' => $this->notification->recipient,
+                'task_id' => $this->notification->notification_task_id,
+                'passenger_id' => $this->notification->passenger_id,
+                'trip_id' => $this->notification->trip_id,
+                'status' => 'queued',
+                'queued_at' => now()->toDateTimeString(),
+            ];
+
+            if ($this->notification->isEmail()) {
+                $startLogData['subject'] = $this->notification->subject;
+                $startLogData['message_length'] = strlen($this->notification->message ?? '');
+                Log::info("📧 НАЧАЛО ОТПРАВКИ: Email", $startLogData);
+            } elseif ($this->notification->isWhatsApp()) {
+                $startLogData['message_length'] = strlen($this->notification->message ?? '');
+                Log::info("📱 НАЧАЛО ОТПРАВКИ: WhatsApp", $startLogData);
+            }
+
             // Отправляем в зависимости от канала
             if ($this->notification->isEmail()) {
                 $this->sendEmail();
@@ -54,7 +75,28 @@ class SendNotificationJob implements ShouldQueue
             // Обновляем счетчик в задаче
             $this->notification->notificationTask->incrementSentCount();
 
-            Log::info("Notification {$this->notification->id} sent successfully via {$this->notification->channel}");
+            // Подробное логирование успешной отправки
+            $logData = [
+                'notification_id' => $this->notification->id,
+                'channel' => $this->notification->channel,
+                'recipient' => $this->notification->recipient,
+                'task_id' => $this->notification->notification_task_id,
+                'passenger_id' => $this->notification->passenger_id,
+                'trip_id' => $this->notification->trip_id,
+                'status' => 'sent',
+                'sent_at' => now()->toDateTimeString(),
+            ];
+
+            if ($this->notification->isEmail()) {
+                $logData['subject'] = $this->notification->subject;
+                $logData['message_length'] = strlen($this->notification->message ?? '');
+                Log::info("✅ УВЕДОМЛЕНИЕ ОТПРАВЛЕНО: Email", $logData);
+            } elseif ($this->notification->isWhatsApp()) {
+                $logData['message_length'] = strlen($this->notification->message ?? '');
+                $logData['external_message_id'] = $this->notification->external_message_id ?? null;
+                $logData['external_task_id'] = $this->notification->external_task_id ?? null;
+                Log::info("✅ УВЕДОМЛЕНИЕ ОТПРАВЛЕНО: WhatsApp", $logData);
+            }
 
         } catch (\Exception $e) {
             $this->handleFailure($e);
@@ -119,21 +161,51 @@ class SendNotificationJob implements ShouldQueue
     {
         $this->notification->incrementRetryCount();
 
-        Log::error("Failed to send notification {$this->notification->id}: {$e->getMessage()}", [
+        $logData = [
             'notification_id' => $this->notification->id,
             'channel' => $this->notification->channel,
             'recipient' => $this->notification->recipient,
+            'task_id' => $this->notification->notification_task_id,
+            'passenger_id' => $this->notification->passenger_id,
+            'trip_id' => $this->notification->trip_id,
             'retry_count' => $this->notification->retry_count,
-            'exception' => $e->getMessage(),
-        ]);
+            'max_retries' => $this->tries,
+            'error_message' => $e->getMessage(),
+            'error_class' => get_class($e),
+            'timestamp' => now()->toDateTimeString(),
+        ];
+
+        if ($this->notification->isEmail()) {
+            $logData['subject'] = $this->notification->subject;
+            $logData['message_length'] = strlen($this->notification->message ?? '');
+        } elseif ($this->notification->isWhatsApp()) {
+            $logData['message_length'] = strlen($this->notification->message ?? '');
+        }
 
         // Если достигли максимального количества попыток
         if (!$this->notification->canRetry($this->tries)) {
             $this->notification->markAsFailed($e->getMessage());
             $this->notification->notificationTask->incrementFailedCount();
             
-            Log::error("Notification {$this->notification->id} failed after {$this->tries} attempts");
+            $logData['status'] = 'failed';
+            $logData['failed_at'] = now()->toDateTimeString();
+            $logData['final_attempt'] = true;
+            
+            if ($this->notification->isEmail()) {
+                Log::error("❌ УВЕДОМЛЕНИЕ НЕ ОТПРАВЛЕНО: Email (после {$this->tries} попыток)", $logData);
+            } elseif ($this->notification->isWhatsApp()) {
+                Log::error("❌ УВЕДОМЛЕНИЕ НЕ ОТПРАВЛЕНО: WhatsApp (после {$this->tries} попыток)", $logData);
+            }
         } else {
+            $logData['will_retry'] = true;
+            $logData['next_retry_delay'] = $this->backoff[$this->notification->retry_count - 1] ?? 60;
+            
+            if ($this->notification->isEmail()) {
+                Log::warning("⚠️ ОШИБКА ОТПРАВКИ Email (попытка {$this->notification->retry_count}/{$this->tries}), будет повтор", $logData);
+            } elseif ($this->notification->isWhatsApp()) {
+                Log::warning("⚠️ ОШИБКА ОТПРАВКИ WhatsApp (попытка {$this->notification->retry_count}/{$this->tries}), будет повтор", $logData);
+            }
+            
             // Попробуем еще раз
             throw $e;
         }
@@ -144,10 +216,29 @@ class SendNotificationJob implements ShouldQueue
      */
     public function failed(\Throwable $exception): void
     {
-        Log::error("Job failed for notification {$this->notification->id}", [
-            'exception' => $exception->getMessage(),
+        $logData = [
+            'notification_id' => $this->notification->id,
+            'channel' => $this->notification->channel,
+            'recipient' => $this->notification->recipient,
+            'task_id' => $this->notification->notification_task_id,
+            'passenger_id' => $this->notification->passenger_id,
+            'trip_id' => $this->notification->trip_id,
+            'retry_count' => $this->notification->retry_count,
+            'status' => 'failed',
+            'error_message' => $exception->getMessage(),
+            'error_class' => get_class($exception),
+            'failed_at' => now()->toDateTimeString(),
             'trace' => $exception->getTraceAsString(),
-        ]);
+        ];
+
+        if ($this->notification->isEmail()) {
+            $logData['subject'] = $this->notification->subject;
+            $logData['message_length'] = strlen($this->notification->message ?? '');
+            Log::error("❌ ЗАДАЧА ПРОВАЛЕНА: Email (job failed)", $logData);
+        } elseif ($this->notification->isWhatsApp()) {
+            $logData['message_length'] = strlen($this->notification->message ?? '');
+            Log::error("❌ ЗАДАЧА ПРОВАЛЕНА: WhatsApp (job failed)", $logData);
+        }
 
         $this->notification->markAsFailed($exception->getMessage());
         $this->notification->notificationTask->incrementFailedCount();

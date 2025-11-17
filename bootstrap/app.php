@@ -38,7 +38,28 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        // Для API маршрутов всегда возвращаем JSON, даже при фатальных ошибках
+        $exceptions->render(function (\Throwable $e, \Illuminate\Http\Request $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                $statusCode = method_exists($e, 'getStatusCode') ? $e->getStatusCode() : 500;
+                
+                // Проверяем, не является ли это ошибкой таймаута
+                $isTimeout = str_contains($e->getMessage(), 'Maximum execution time') 
+                          || str_contains($e->getMessage(), 'execution time exceeded')
+                          || str_contains($e->getMessage(), 'FatalError');
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => $isTimeout 
+                        ? 'Операция превысила лимит времени выполнения. Для больших объемов данных рекомендуется использовать команду через терминал.'
+                        : ($e->getMessage() ?: 'Внутренняя ошибка сервера'),
+                    'error' => class_basename($e),
+                    'is_timeout' => $isTimeout,
+                ], $statusCode, [
+                    'Content-Type' => 'application/json',
+                ]);
+            }
+        });
     })->create();
 
 

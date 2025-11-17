@@ -196,9 +196,15 @@ class SettingsController extends Controller
                     );
                 } else {
                     // Для несекретных полей сохраняем как есть
+                    // Для sync_interval_seconds убеждаемся, что значение - integer
+                    $finalValue = $value;
+                    if ($key === 'sync_interval_seconds' && is_numeric($value)) {
+                        $finalValue = (int) $value;
+                    }
+                    
                     Setting::set(
                         key: $fullKey,
-                        value: $value,
+                        value: $finalValue,
                         group: $group,
                         type: $this->getSettingType($key),
                         encrypted: false
@@ -208,6 +214,11 @@ class SettingsController extends Controller
 
             // Обновляем конфигурацию кэша
             $this->clearConfigCache();
+
+            // Если обновляются настройки MySQL синхронизации, обновляем конфиг supervisor
+            if ($group === 'mysql_bridge' && isset($settings['sync_interval_seconds'])) {
+                $this->updateSupervisorConfig();
+            }
 
             Log::info("Settings updated", [
                 'group' => $group,
@@ -931,6 +942,102 @@ class SettingsController extends Controller
             }
         } catch (\Exception $e) {
             Log::warning("Failed to clear config cache", ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Обновить конфигурацию supervisor для MySQL синхронизации
+     * Убирает жестко прописанный --interval из конфига, чтобы использовались настройки из БД
+     */
+    protected function updateSupervisorConfig(): void
+    {
+        try {
+            // Возможные пути к конфигу supervisor
+            $possiblePaths = [
+                '/etc/supervisor/conf.d/mysql_sync.conf',
+                '/etc/supervisor/conf.d/supervisor_mysql_sync.conf',
+                '/etc/supervisord.d/mysql_sync.conf',
+                '/etc/supervisord.d/supervisor_mysql_sync.conf',
+            ];
+
+            $configPath = null;
+            foreach ($possiblePaths as $path) {
+                if (file_exists($path) && is_readable($path)) {
+                    $configPath = $path;
+                    break;
+                }
+            }
+
+            if (!$configPath) {
+                Log::warning("Supervisor config file not found", ['searched_paths' => $possiblePaths]);
+                return;
+            }
+
+            // Читаем текущий конфиг
+            $configContent = file_get_contents($configPath);
+            if ($configContent === false) {
+                Log::warning("Failed to read supervisor config", ['path' => $configPath]);
+                return;
+            }
+
+            // Проверяем, есть ли жестко прописанный --interval
+            if (preg_match('/--interval=\d+/', $configContent)) {
+                // Убираем --interval из команды
+                $updatedContent = preg_replace('/\s+--interval=\d+/', '', $configContent);
+                
+                // Записываем обновленный конфиг
+                if (is_writable($configPath)) {
+                    file_put_contents($configPath, $updatedContent);
+                    Log::info("Supervisor config updated", ['path' => $configPath]);
+                    
+                    // Перезагружаем конфигурацию supervisor
+                    $this->reloadSupervisor();
+                } else {
+                    Log::warning("Supervisor config file is not writable", ['path' => $configPath]);
+                }
+            } else {
+                // Конфиг уже правильный, просто перезагружаем для применения изменений
+                $this->reloadSupervisor();
+            }
+
+        } catch (\Exception $e) {
+            Log::error("Failed to update supervisor config", [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
+    }
+
+    /**
+     * Перезагрузить конфигурацию supervisor
+     */
+    protected function reloadSupervisor(): void
+    {
+        try {
+            if (!function_exists('exec')) {
+                Log::warning("exec() function is not available, cannot reload supervisor");
+                return;
+            }
+
+            // Перечитываем конфигурацию
+            exec('sudo supervisorctl reread 2>&1', $output1, $return1);
+            
+            // Применяем изменения
+            exec('sudo supervisorctl update 2>&1', $output2, $return2);
+            
+            // Перезапускаем процесс (если нужно)
+            exec('sudo supervisorctl restart notifybus-mysql-sync 2>&1', $output3, $return3);
+
+            Log::info("Supervisor reloaded", [
+                'reread_output' => implode("\n", $output1),
+                'update_output' => implode("\n", $output2),
+                'restart_output' => implode("\n", $output3),
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to reload supervisor", [
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 }

@@ -509,7 +509,6 @@
                     <button class="tab" data-tab-target="email" onclick="switchTab('email', this)">✉️ Email</button>
                     <button class="tab" data-tab-target="carrier" onclick="switchTab('carrier', this)">🚌 API Перевозчика</button>
                     <button class="tab" data-tab-target="notification" onclick="switchTab('notification', this)">🔔 Уведомления</button>
-                    <button class="tab" data-tab-target="importer" onclick="switchTab('importer', this)">🚍 Импорт</button>
                     <button class="tab" data-tab-target="mysql_bridge" onclick="switchTab('mysql_bridge', this)">🗄 MySQL</button>
                     <button class="tab" data-tab-target="templates" onclick="switchTab('templates', this)">📝 Шаблоны</button>
                     <button class="tab" data-tab-target="search_history" onclick="switchTab('search_history', this)">🕘 История поиска</button>
@@ -721,24 +720,8 @@
             </div>
 
             <div id="mysql_bridge-tab" class="tab-content">
-                <h2>MySQL импорт и синхронизация</h2>
-                <p style="color:#666; margin-bottom:18px;">Загрузите дамп pb_order_item вручную или настройте безопасное подключение к удалённой MySQL, чтобы синхронизировать только новые данные по расписанию.</p>
-
-                <div class="card" style="padding:20px; margin-bottom:20px;">
-                    <h3 style="margin-bottom:10px;">⬆️ Загрузка дампа</h3>
-                    <form id="mysql-upload-form" enctype="multipart/form-data">
-                        <div class="form-group">
-                            <label for="mysql_dump_file">Файл дампа (.sql или .sql.gz)</label>
-                            <input type="file" id="mysql_dump_file" name="dump" accept=".sql,.gz,.txt" required>
-                            <small>Файл не должен превышать 512 МБ. Импортируется только таблица pb_order_item.</small>
-                        </div>
-                        <div class="btn-group">
-                            <button type="submit" class="btn btn-primary">📥 Загрузить и импортировать</button>
-                        </div>
-                    </form>
-                    <div id="mysql-upload-result" style="margin-top:15px;"></div>
-                </div>
-
+                <h2>Синхронизация MySQL</h2>
+                <p style="color:#666; margin-bottom:15px;">Настройте подключение к удалённой MySQL базе данных и расписание автоматической синхронизации.</p>
                 <div class="card" style="padding:20px;">
                     <h3 style="margin-bottom:10px;">🔌 Удалённое подключение и расписание</h3>
                     <form id="mysql-connection-form">
@@ -781,7 +764,7 @@
                             <div class="form-group">
                                 <label for="mysql_bridge_sync_interval_minutes">Интервал синхронизации (минуты)</label>
                                 <input type="number" id="mysql_bridge_sync_interval_minutes" name="sync_interval_minutes" value="10" min="1" max="720">
-                                <small>Используется процессом «Синхронизация MySQL».</small>
+                                <small>Интервал автоматической синхронизации. Изменения применяются сразу после сохранения при следующем цикле (без перезапуска supervisor).</small>
                             </div>
                         </div>
                         <label class="checkbox-inline" style="margin-bottom:15px;">
@@ -791,7 +774,7 @@
                         <div class="btn-group">
                             <button type="submit" class="btn btn-primary">💾 Сохранить</button>
                             <button type="button" class="btn btn-success" id="mysql-test-connection">🔍 Проверить подключение</button>
-                            <button type="button" class="btn btn-secondary" id="mysql-run-sync">⚡ Синхронизировать сейчас</button>
+                            <button type="button" class="btn btn-danger" id="mysql-clear-local">🗑️ Очистить локальную базу</button>
                         </div>
                     </form>
                     <div id="mysql-sync-status" style="margin-top:15px;"></div>
@@ -800,7 +783,28 @@
 
             <div id="templates-tab" class="tab-content">
                 <h2>Шаблоны сообщений</h2>
-                <p style="color:#666; margin-bottom:15px;">Шаблоны используются при рассылке писем и WhatsApp-сообщений. Используйте переменные вида @{{passenger_full_name}} или @{{trip_number}} — список доступен под формой.</p>
+                <p style="color:#666; margin-bottom:15px;">Шаблоны используются при рассылке писем и WhatsApp-сообщений.</p>
+                <div style="margin-bottom:20px; padding:16px; border-radius:12px; border:1px dashed #cdd5ff; background:#f8faff;">
+                    <strong style="display:block; margin-bottom:10px; color:#3f475e;">Доступные переменные:</strong>
+                    <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+                        <span class="badge badge-warning">@{{passenger_full_name}}</span>
+                        <span class="badge badge-warning">@{{passenger_first_name}}</span>
+                        <span class="badge badge-warning">@{{passenger_last_name}}</span>
+                        <span class="badge badge-warning">@{{trip_number}}</span>
+                        <span class="badge badge-warning">@{{departure_station}}</span>
+                        <span class="badge badge-warning">@{{arrival_station}}</span>
+                        <span class="badge badge-warning">@{{departure_time}}</span>
+                        <span class="badge badge-warning">@{{departure_date}}</span>
+                        <span class="badge badge-warning">@{{departure_time_only}}</span>
+                        <span class="badge badge-warning">@{{arrival_time}}</span>
+                        <span class="badge badge-warning">@{{seat_number}}</span>
+                        <span class="badge badge-warning">@{{cancellation_reason}}</span>
+                        <span class="badge badge-warning">@{{delay_minutes}}</span>
+                        <span class="badge badge-warning">@{{passenger_email}}</span>
+                        <span class="badge badge-warning">@{{passenger_phone}}</span>
+                    </div>
+                    <small style="display:block; color:#6c6f85; line-height:1.5;">Используйте @{{variable_name}} внутри темы и текста сообщения. Переменные будут автоматически заменены на реальные данные пассажира и рейса при отправке уведомления.</small>
+                </div>
                 <div id="template-manager-settings" class="template-manager">
                     <div class="template-manager-header">
                         <div>
@@ -850,15 +854,6 @@
                         </div>
                     </form>
                     <div class="template-list"></div>
-                    <div style="background:#f8faff; border:1px dashed #cdd5ff; border-radius:12px; padding:16px;">
-                        <strong>Популярные переменные:</strong>
-                        <ul style="margin-top:8px; padding-left:18px; color:#555; line-height:1.5;">
-                            <li>@{{passenger_full_name}}, @{{passenger_first_name}}</li>
-                            <li>@{{trip_number}}, @{{departure_station}}, @{{arrival_station}}</li>
-                            <li>@{{departure_time}}, @{{departure_date}}, @{{departure_time_only}}</li>
-                            <li>@{{seat_number}}, @{{cancellation_reason}}</li>
-                        </ul>
-                    </div>
                 </div>
             </div>
 
@@ -1216,9 +1211,9 @@
                 testButton.addEventListener('click', testMysqlConnection);
             }
 
-            const syncButton = document.getElementById('mysql-run-sync');
-            if (syncButton) {
-                syncButton.addEventListener('click', runMysqlSync);
+            const clearButton = document.getElementById('mysql-clear-local');
+            if (clearButton) {
+                clearButton.addEventListener('click', clearMysqlLocal);
             }
 
             mysqlTabState.initialized = true;
@@ -1359,6 +1354,11 @@
                     showAlert('✅ ' + (data.message || 'Настройки успешно сохранены в базу данных!'), 'success');
                     if (group === 'mysql_bridge') {
                         loadMysqlStatus();
+                        // Показываем сообщение о применении интервала
+                        const intervalMinutes = document.getElementById('mysql_bridge_sync_interval_minutes')?.value;
+                        if (intervalMinutes) {
+                            showAlert(`✅ Интервал синхронизации обновлен: ${intervalMinutes} минут. Изменения применятся при следующем цикле автоматической синхронизации (без перезапуска).`, 'success');
+                        }
                     }
                 } else {
                     throw new Error(data.message || 'Неизвестная ошибка');
@@ -1526,16 +1526,32 @@
             }
         }
 
-        async function runMysqlSync() {
+        async function clearMysqlLocal() {
             const statusContainer = document.getElementById('mysql-sync-status');
             if (!statusContainer) {
                 return;
             }
 
-            statusContainer.innerHTML = '<div class="alert alert-info">⏳ Синхронизация запускается...</div>';
+            const clearButton = document.getElementById('mysql-clear-local');
+            const originalButtonText = clearButton?.textContent || '🗑️ Очистить локальную базу';
+            
+            // Подтверждение действия
+            const confirmed = confirm('⚠️ ВНИМАНИЕ!\n\nВы уверены, что хотите очистить локальную таблицу pb_order_item?\n\nЭто действие удалит ВСЕ данные из локальной реплики. После очистки потребуется полная синхронизация.\n\nЭто действие нельзя отменить!');
+            
+            if (!confirmed) {
+                return;
+            }
+
+            // Блокируем кнопку во время очистки
+            if (clearButton) {
+                clearButton.disabled = true;
+                clearButton.textContent = '⏳ Очистка...';
+            }
+
+            statusContainer.innerHTML = '<div class="alert alert-warning">⏳ Очистка локальной базы данных...</div>';
 
             try {
-                const response = await fetch(`${API_BASE}/import/mysql/sync`, {
+                const response = await fetch(`${API_BASE}/import/mysql/clear`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1544,21 +1560,55 @@
                         'X-Requested-With': 'XMLHttpRequest',
                     },
                     credentials: 'include',
-                    body: JSON.stringify({
-                        only_new: document.getElementById('mysql_bridge_sync_only_new')?.checked ?? true,
-                    }),
                 });
 
-                const data = await response.json();
-
-                if (!response.ok || !data.success) {
-                    throw new Error(data.message || `HTTP ${response.status}`);
+                // Проверяем Content-Type перед парсингом JSON
+                const contentType = response.headers.get('content-type') || '';
+                let data;
+                
+                if (contentType.includes('application/json')) {
+                    try {
+                        const text = await response.text();
+                        data = JSON.parse(text);
+                    } catch (parseError) {
+                        console.error('JSON parse error:', parseError);
+                        throw new Error('Не удалось распарсить ответ сервера.');
+                    }
+                } else {
+                    const text = await response.text();
+                    console.error('Non-JSON response:', text.substring(0, 500));
+                    throw new Error(`Сервер вернул не JSON ответ. Проверьте логи сервера.`);
                 }
 
-                mysqlTabState.lastStatus = data.data;
-                statusContainer.innerHTML = `<div class="alert alert-success">✅ ${data.message}<br>Обработано строк: <strong>${data.data?.rows_processed ?? 0}</strong></div>`;
+                if (!response.ok) {
+                    throw new Error(data.message || `HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                if (!data.success) {
+                    throw new Error(data.message || 'Очистка завершилась с ошибкой');
+                }
+
+                statusContainer.innerHTML = `<div class="alert alert-success">✅ ${data.message || 'Локальная база данных очищена успешно'}<br><small>Теперь можно выполнить полную синхронизацию</small></div>`;
+                
+                // Обновляем статус синхронизации
+                setTimeout(() => loadMysqlSyncStatus(), 1000);
             } catch (error) {
-                statusContainer.innerHTML = `<div class="alert alert-error">⚠️ Ошибка синхронизации: ${error.message}</div>`;
+                console.error('MySQL clear error:', error);
+                let errorMessage = error.message || 'Неизвестная ошибка';
+                
+                if (errorMessage.includes('Unexpected token')) {
+                    errorMessage = 'Сервер вернул некорректный ответ. Проверьте логи сервера.';
+                } else if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+                    errorMessage = 'Ошибка сети. Проверьте подключение к серверу.';
+                }
+                
+                statusContainer.innerHTML = `<div class="alert alert-error">⚠️ Ошибка очистки: ${errorMessage}</div>`;
+            } finally {
+                // Разблокируем кнопку
+                if (clearButton) {
+                    clearButton.disabled = false;
+                    clearButton.textContent = originalButtonText;
+                }
             }
         }
 

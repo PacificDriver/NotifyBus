@@ -663,75 +663,6 @@
         </div>
         
         <div class="card">
-            <h2>Шаблоны сообщений</h2>
-            <div id="template-manager-dashboard" class="template-manager">
-                <div class="template-manager-header">
-                    <div>
-                        <p class="muted-text">Создавайте и редактируйте тексты WhatsApp и Email перед массовой рассылкой.</p>
-                        <div style="margin-top:10px; padding:12px; border-radius:10px; border:1px dashed #cdd5ff; background:#f8faff;">
-                            <strong style="display:block; margin-bottom:6px;">Доступные переменные:</strong>
-                            <div style="display:flex; flex-wrap:wrap; gap:6px;">
-                                <span class="badge badge-warning">@{{passenger_full_name}}</span>
-                                <span class="badge badge-warning">@{{passenger_first_name}}</span>
-                                <span class="badge badge-warning">@{{trip_number}}</span>
-                                <span class="badge badge-warning">@{{departure_station}}</span>
-                                <span class="badge badge-warning">@{{arrival_station}}</span>
-                                <span class="badge badge-warning">@{{departure_time}}</span>
-                                <span class="badge badge-warning">@{{departure_date}}</span>
-                                <span class="badge badge-warning">@{{seat_number}}</span>
-                                <span class="badge badge-warning">@{{cancellation_reason}}</span>
-                            </div>
-                            <small style="display:block; margin-top:8px; color:#6c6f85;">Используйте @{{variable_name}} внутри темы и текста. Полный список доступен на вкладке «Шаблоны» в настройках.</small>
-                        </div>
-                    </div>
-                    <button type="button" class="btn btn-secondary template-toggle-create">➕ Новый шаблон</button>
-                </div>
-                <form class="template-create-form hidden" autocomplete="off">
-                    <h3 style="margin-bottom: 10px;">Новый шаблон</h3>
-                    <div class="template-form-grid">
-                        <label>
-                            Название
-                            <input type="text" name="name" required data-template-field="name" placeholder="Отмена рейса (WhatsApp)">
-                        </label>
-                        <label>
-                            Слаг
-                            <input type="text" name="slug" required data-template-field="slug" placeholder="cancel-whatsapp">
-                        </label>
-                        <label>
-                            Тип
-                            <select name="type" required>
-                                <option value="cancellation">Отмена рейса</option>
-                                <option value="delay">Задержка рейса</option>
-                                <option value="general">Общий шаблон</option>
-                            </select>
-                        </label>
-                        <label>
-                            Тема письма (Email)
-                            <input type="text" name="subject" placeholder="Рейс отменён">
-                        </label>
-                        <label class="full-width">
-                            Текст сообщения
-                            <textarea name="body" rows="4" required placeholder="Уважаемый @{{passenger_full_name}}, сообщаем об отмене рейса @{{trip_number}}..."></textarea>
-                        </label>
-                        <label class="full-width">
-                            Доступные переменные (через запятую)
-                            <input type="text" name="available_variables" placeholder="@{{passenger_full_name}}, @{{trip_number}}, @{{departure_time}}">
-                        </label>
-                        <label class="checkbox-inline">
-                            <input type="checkbox" name="is_active" checked>
-                            Шаблон активен
-                        </label>
-                    </div>
-                    <div class="template-actions">
-                        <button type="submit" class="btn btn-primary">Сохранить шаблон</button>
-                        <button type="button" class="btn btn-text template-toggle-create">Отмена</button>
-                    </div>
-                </form>
-                <div class="template-list"></div>
-            </div>
-        </div>
-
-        <div class="card">
             <h2>Статус сервисов</h2>
             <div style="padding: 20px;" id="services-status">
                 <div style="margin-bottom: 15px;">
@@ -752,8 +683,6 @@
                 </div>
             </div>
         </div>
-        
-        <script src="/js/template-manager.js"></script>
         <script>
             const modalElements = {
                 root: null,
@@ -938,7 +867,6 @@
                 }
 
                 checkServicesStatus();
-                initTemplateManagerDashboard();
             });
 
             const processState = {
@@ -1208,27 +1136,6 @@
                 }
             }
 
-            function initTemplateManagerDashboard() {
-                const root = document.getElementById('template-manager-dashboard');
-                if (!root || typeof TemplateManager === 'undefined') {
-                    return;
-                }
-
-                if (root.__templateManager) {
-                    return;
-                }
-
-                const manager = new TemplateManager({
-                    root,
-                    listSelector: '.template-list',
-                    createFormSelector: '.template-create-form',
-                    toggleSelector: '.template-toggle-create',
-                    emptyText: 'Пока нет шаблонов. Создайте первый, чтобы ускорить рассылку.',
-                });
-
-                manager.init();
-                root.__templateManager = manager;
-            }
         </script>
     </div>
 </body>

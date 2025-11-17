@@ -52,18 +52,39 @@ class PbOrderItemImporter
             throw new \RuntimeException("Таблица '{$sourceTable}' недоступна. Проверьте настройку «Импорт → Таблица источника» в админке.");
         }
 
+        // Логируем параметры импорта для отладки
+        Log::info('PbOrderItemImporter: Starting import', [
+            'source_table' => $sourceTable,
+            'since_id' => $sinceId,
+            'filter_race_ids' => $filterRaceIds,
+            'chunk_size' => $chunkSize,
+            'dry_run' => $dryRun,
+        ]);
+
         $query = DB::table($sourceTable)->orderBy('ID');
 
-        if ($sinceId) {
-            $query->where('ID', '>', $sinceId);
-        }
-
+        // Если указаны конкретные race_ids, игнорируем sinceId для этих рейсов
+        // Это позволяет импортировать конкретные рейсы независимо от sinceId
         if ($filterRaceIds) {
             $query->whereIn('RACE_ID', array_map('trim', $filterRaceIds));
+            // При фильтре по race_ids игнорируем sinceId, чтобы импортировать все записи для этих рейсов
+        } elseif ($sinceId !== null && $sinceId > 0) {
+            // Используем sinceId только если он больше 0 и не указаны race_ids
+            $query->where('ID', '>', $sinceId);
         }
+        // Если sinceId === 0 или null и нет filterRaceIds, импортируем все записи
 
-        $query->chunkById($chunkSize, function ($rows) use ($dryRun, &$stats) {
+        $query->chunkById($chunkSize, function ($rows) use ($dryRun, &$stats, $filterRaceIds) {
+            $chunkStartId = null;
+            $chunkEndId = null;
+            $passengersInChunk = 0;
+            
             foreach ($rows as $row) {
+                if ($chunkStartId === null) {
+                    $chunkStartId = $row->ID;
+                }
+                $chunkEndId = $row->ID;
+                
                 $stats['rows_read']++;
                 $stats['last_processed_id'] = $row->ID;
 
@@ -75,7 +96,21 @@ class PbOrderItemImporter
                 $stats['routes_created'] += $result['routes_created'];
                 $stats['trips_created'] += $result['trip_created'] ? 1 : 0;
                 $stats['trips_updated'] += $result['trip_updated'] ? 1 : 0;
-                $stats['passengers_upserted'] += $result['passenger_upserted'] ? 1 : 0;
+                if ($result['passenger_upserted']) {
+                    $stats['passengers_upserted']++;
+                    $passengersInChunk++;
+                }
+            }
+            
+            // Логируем информацию о чанке для отладки
+            if ($filterRaceIds) {
+                Log::info('PbOrderItemImporter: Processed chunk', [
+                    'chunk_size' => count($rows),
+                    'start_id' => $chunkStartId,
+                    'end_id' => $chunkEndId,
+                    'filter_race_ids' => $filterRaceIds,
+                    'passengers_upserted_in_chunk' => $passengersInChunk,
+                ]);
             }
         }, 'ID');
 
@@ -126,6 +161,9 @@ class PbOrderItemImporter
         $raceId = $this->stringValue($data['RACE_ID'] ?? null);
 
         if (!$raceId) {
+            Log::debug('PbOrderItemImporter: Skipping row without RACE_ID', [
+                'row_id' => $data['ID'] ?? null,
+            ]);
             return $result;
         }
 
@@ -154,10 +192,36 @@ class PbOrderItemImporter
             return $result;
         }
 
-        $passenger = $this->upsertPassenger($trip, $data);
+        try {
+            $passenger = $this->upsertPassenger($trip, $data);
 
-        if ($passenger) {
-            $result['passenger_upserted'] = true;
+            if ($passenger) {
+                $result['passenger_upserted'] = true;
+                Log::debug('PbOrderItemImporter: Passenger upserted', [
+                    'passenger_id' => $passenger->id,
+                    'trip_id' => $trip->id,
+                    'trip_external_id' => $trip->external_id,
+                    'race_id' => $raceId,
+                    'ticket_uid' => $passenger->ticket_uid,
+                ]);
+            } else {
+                Log::warning('PbOrderItemImporter: Failed to upsert passenger', [
+                    'trip_id' => $trip->id,
+                    'trip_external_id' => $trip->external_id,
+                    'race_id' => $raceId,
+                    'row_id' => $data['ID'] ?? null,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::error('PbOrderItemImporter: Error upserting passenger', [
+                'trip_id' => $trip->id,
+                'trip_external_id' => $trip->external_id,
+                'race_id' => $raceId,
+                'row_id' => $data['ID'] ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
         }
 
         return $result;
@@ -380,7 +444,22 @@ class PbOrderItemImporter
             'external_payload' => $data,
         ];
 
-        return Passenger::updateOrCreate($attributes, array_filter($values, static fn ($value) => $value !== null));
+        // Фильтруем null значения, но всегда включаем trip_id, даже если он null
+        $filteredValues = array_filter($values, static fn ($value) => $value !== null);
+        
+        // Гарантируем, что trip_id всегда обновляется, даже если пассажир уже существует
+        $filteredValues['trip_id'] = $trip->id;
+
+        $passenger = Passenger::updateOrCreate($attributes, $filteredValues);
+        
+        // Дополнительная проверка: если trip_id не совпадает, обновляем вручную
+        // Это нужно на случай, если updateOrCreate не обновил trip_id из-за уникального индекса
+        if ($passenger->trip_id !== $trip->id) {
+            $passenger->trip_id = $trip->id;
+            $passenger->save();
+        }
+
+        return $passenger;
     }
 
     /**

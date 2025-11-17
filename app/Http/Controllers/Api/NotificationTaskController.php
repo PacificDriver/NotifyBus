@@ -67,17 +67,17 @@ class NotificationTaskController extends Controller
                 'title' => $title,
             ]);
             
-            $task = NotificationTask::create([
-                'title' => $title, // Генерируем название явно
-                'races_data' => [], // Пустой массив, рейсы добавляются позже
-                'trip_ids' => [], // Пустой массив, будет заполнен после загрузки пассажиров
-                'template_id' => $validated['template_id'] ?? null,
-                'custom_message' => $validated['custom_message'] ?? null,
-                'created_by' => $user->id,
-                'total_recipients' => 0, // Будет заполнено после загрузки пассажиров
-                'status' => 'draft',
-                'scheduled_at' => $validated['scheduled_at'] ?? null,
-            ]);
+            $task = new NotificationTask();
+            $task->title = $title;
+            $task->races_data = [];
+            $task->trip_ids = [];
+            $task->template_id = $validated['template_id'] ?? null;
+            $task->custom_message = $validated['custom_message'] ?? null;
+            $task->created_by = $user->id;
+            $task->total_recipients = 0;
+            $task->status = 'draft';
+            $task->scheduled_at = $validated['scheduled_at'] ?? null;
+            $task->save();
 
             Log::info("Notification task created successfully", [
                 'task_id' => $task->id,
@@ -138,7 +138,29 @@ class NotificationTaskController extends Controller
             'races_data.*.to_station_name' => 'nullable|string',
             'races_data.*.route_number' => 'nullable|string',
             'races_data.*.trip_number' => 'nullable|string',
+            'races_data.*.route' => 'nullable|string', // Поле из API, будет нормализовано в route_number
+            'races_data.*.route_start' => 'nullable|string', // Поле из API
+            'races_data.*.route_end' => 'nullable|string', // Поле из API
         ]);
+        
+        // Нормализуем данные: route -> route_number, route_start/route_end -> from_station_name/to_station_name
+        foreach ($validated['races_data'] as &$race) {
+            // Если есть route, но нет route_number, копируем
+            if (isset($race['route']) && !isset($race['route_number'])) {
+                $race['route_number'] = $race['route'];
+            }
+            
+            // Если есть route_start, но нет from_station_name, копируем
+            if (isset($race['route_start']) && !isset($race['from_station_name'])) {
+                $race['from_station_name'] = $race['route_start'];
+            }
+            
+            // Если есть route_end, но нет to_station_name, копируем
+            if (isset($race['route_end']) && !isset($race['to_station_name'])) {
+                $race['to_station_name'] = $race['route_end'];
+            }
+        }
+        unset($race); // Важно: сбрасываем ссылку
 
         // Получаем текущие рейсы
         $currentRaces = $task->races_data ?? [];
@@ -495,6 +517,24 @@ class NotificationTaskController extends Controller
             $passengers = $passengersQuery->get()
                 ->filter(fn($p) => $p->canReceiveNotifications());
 
+            // Создаем маппинг race_id -> race_data для использования правильных данных
+            // Важно: ключи должны быть строками, так как id может быть строкой или числом
+            $racesDataMap = [];
+            foreach ($task->races_data ?? [] as $raceData) {
+                if (isset($raceData['id'])) {
+                    // Приводим к строке для надежного сравнения
+                    $raceId = (string)$raceData['id'];
+                    $racesDataMap[$raceId] = $raceData;
+                }
+            }
+            
+            Log::info("Races data map created", [
+                'task_id' => $task->id,
+                'races_count' => count($racesDataMap),
+                'race_ids' => array_keys($racesDataMap),
+                'sample_race_data' => !empty($racesDataMap) ? reset($racesDataMap) : null,
+            ]);
+
             $template = $task->template;
 
             $batchSize = max(1, (int) config('notifications.batch_size', 10));
@@ -507,18 +547,66 @@ class NotificationTaskController extends Controller
 
                 foreach ($chunk as $passenger) {
                     $trip = $passenger->trip;
+                    
+                    // Получаем данные из races_data для этого пассажира
+                    // Пробуем найти по external_race_id пассажира или по external_id Trip
+                    $raceData = null;
+                    $raceId = null;
+                    
+                    // Сначала пробуем по external_race_id пассажира
+                    if ($passenger->external_race_id) {
+                        $raceId = (string)$passenger->external_race_id;
+                        if (isset($racesDataMap[$raceId])) {
+                            $raceData = $racesDataMap[$raceId];
+                        }
+                    }
+                    
+                    // Если не нашли, пробуем по external_id Trip
+                    if (!$raceData && $trip->external_id) {
+                        $raceId = (string)$trip->external_id;
+                        if (isset($racesDataMap[$raceId])) {
+                            $raceData = $racesDataMap[$raceId];
+                        }
+                    }
+                    
+                    // Логирование для отладки
+                    Log::debug("Preparing notification", [
+                        'passenger_id' => $passenger->id,
+                        'passenger_external_race_id' => $passenger->external_race_id,
+                        'trip_id' => $trip->id,
+                        'trip_external_id' => $trip->external_id,
+                        'trip_trip_number' => $trip->trip_number,
+                        'race_id_used' => $raceId,
+                        'race_data_found' => $raceData !== null,
+                        'race_data_trip_number' => $raceData['trip_number'] ?? null,
+                        'races_data_map_keys' => array_keys($racesDataMap),
+                    ]);
 
                     if ($template) {
-                        $variables = MessageTemplate::getVariablesForPassenger($passenger, $trip);
+                        // Передаем raceData для использования правильного trip_number
+                        $variables = MessageTemplate::getVariablesForPassenger($passenger, $trip, $raceData);
                         $renderedMessage = $template->render($variables);
                         $subject = $renderedMessage['subject'];
                         $message = $renderedMessage['body'];
                     } else {
                         $subject = 'Уведомление о рейсе';
                         $message = $customMessage ?? $task->custom_message;
+                        
+                        // Заменяем переменные шаблона даже в custom_message
+                        $variables = MessageTemplate::getVariablesForPassenger($passenger, $trip, $raceData);
+                        foreach ($variables as $key => $value) {
+                            $placeholder = "{{" . $key . "}}";
+                            $subject = str_replace($placeholder, (string)$value, $subject);
+                            $message = str_replace($placeholder, (string)$value, $message);
+                        }
                     }
 
-                    $message = $this->replaceSimpleVariables($message, $trip);
+                    // Используем trip_number из races_data для replaceSimpleVariables
+                    $tripNumberForReplace = null;
+                    if ($raceData) {
+                        $tripNumberForReplace = $raceData['trip_number'] ?? $raceData['route_number'] ?? $raceData['id'] ?? null;
+                    }
+                    $message = $this->replaceSimpleVariables($message, $trip, $tripNumberForReplace);
                     $notificationDelay = $baseDelay->copy()->addSeconds($offset);
 
                     if ($passenger->hasEmail()) {
@@ -631,7 +719,9 @@ class NotificationTaskController extends Controller
             return null;
         }
 
+        // Приоритет: route_number (нормализованное) > route (из API) > trip_number > id
         $routeNumber = $raceData['route_number']
+            ?? $raceData['route']  // Поле из API, если еще не нормализовано
             ?? $raceData['trip_number']
             ?? $raceData['id']
             ?? null;
@@ -799,11 +889,12 @@ class NotificationTaskController extends Controller
 
     /**
      * Заменить простые переменные {РЕЙС}, {ДАТА}, {ВРЕМЯ} в сообщении
+     * @param string|null $tripNumber Номер рейса из races_data (если передан, используется вместо trip->trip_number)
      */
-    protected function replaceSimpleVariables(string $message, Trip $trip): string
+    protected function replaceSimpleVariables(string $message, Trip $trip, ?string $tripNumber = null): string
     {
         // Получаем данные о рейсе
-        $tripNumber = $trip->trip_number ?? 'N/A';
+        $tripNumber = $tripNumber ?? $trip->trip_number ?? 'N/A';
         
         // Формат даты: 31.10.25
         $date = $trip->departure_time ? $trip->departure_time->format('d.m.y') : 'N/A';
@@ -859,5 +950,3 @@ class NotificationTaskController extends Controller
         ]);
     }
 }
-
-

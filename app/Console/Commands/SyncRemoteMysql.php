@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Services\MySqlImportService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 
 class SyncRemoteMysql extends Command
 {
@@ -20,14 +22,48 @@ class SyncRemoteMysql extends Command
         $mode = $this->option('mode') === 'full' ? 'full' : 'new';
         $limit = $this->option('limit') ? (int) $this->option('limit') : null;
         $watch = (bool) $this->option('watch');
-        $interval = max(60, (int) $this->option('interval'));
+        
+        // Читаем интервал из настроек БД, если они есть
+        $intervalFromDb = \App\Models\Setting::get('mysql_bridge_sync_interval_seconds');
+        $intervalFromOption = (int) $this->option('interval');
+        
+        // Приоритет: настройки из БД > параметр командной строки > значение по умолчанию (600)
+        if ($intervalFromDb !== null) {
+            $interval = max(60, (int) $intervalFromDb);
+            $this->info("Используется интервал из настроек БД: {$interval} сек.");
+        } else {
+            $interval = max(60, $intervalFromOption ?: 600);
+            $this->info("Используется интервал из параметра командной строки: {$interval} сек.");
+        }
 
         if ($watch) {
             $this->info("Включен режим наблюдения. Интервал {$interval} сек.");
 
+            $previousInterval = $interval;
+            
             while (true) {
                 $this->runSyncCycle($service, $mode, $limit);
-                $this->info("Пауза {$interval} сек...");
+                
+                // Перечитываем интервал из БД перед каждым циклом
+                // Это позволяет менять интервал без перезапуска supervisor
+                $newInterval = \App\Models\Setting::get('mysql_bridge_sync_interval_seconds');
+                if ($newInterval !== null) {
+                    $newInterval = max(60, (int) $newInterval);
+                    
+                    // Логируем изменение интервала, если оно произошло
+                    if ($newInterval !== $previousInterval) {
+                        $this->info("🔄 Интервал синхронизации изменен: {$previousInterval} сек → {$newInterval} сек");
+                        Log::info('MySQL sync interval changed', [
+                            'old_interval' => $previousInterval,
+                            'new_interval' => $newInterval,
+                        ]);
+                        $previousInterval = $newInterval;
+                    }
+                    
+                    $interval = $newInterval;
+                }
+                
+                $this->info("⏸ Пауза {$interval} сек до следующей синхронизации...");
                 sleep($interval);
             }
         }
@@ -58,6 +94,39 @@ class SyncRemoteMysql extends Command
         );
 
         $this->info('Синхронизация завершена.');
+
+        // Запускаем импорт пассажиров из pb_order_item в локальные сущности
+        // Импортируем только новые записи (те, что были синхронизированы)
+        // Не сбрасываем состояние импорта, чтобы не импортировать все записи заново
+        if ($result['rows_processed'] > 0) {
+            $this->info('Запуск импорта пассажиров из pb_order_item...');
+            
+            try {
+                // Получаем последний обработанный ID перед импортом
+                $lastProcessedId = \App\Models\ImportState::firstWhere('key', 'pb_order_item')?->value['last_id'] ?? 0;
+                
+                // Импортируем только новые записи (после последнего обработанного ID)
+                // Это позволяет импортировать только те записи, которые были синхронизированы
+                Artisan::call('import:pb-order-items', [
+                    '--since-id' => $lastProcessedId,
+                ]);
+                
+                $importOutput = Artisan::output();
+                if (!empty(trim($importOutput))) {
+                    $this->line($importOutput);
+                }
+                
+                $this->info('Импорт пассажиров завершён.');
+            } catch (\Throwable $e) {
+                Log::error('Failed to run passenger import after MySQL sync', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+                $this->error('Ошибка при импорте пассажиров: ' . $e->getMessage());
+            }
+        } else {
+            $this->info('Нет новых данных для импорта.');
+        }
     }
 }
 

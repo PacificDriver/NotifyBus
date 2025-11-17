@@ -83,13 +83,29 @@ class TripController extends Controller
 
             // Добавляем информацию о станциях к каждому рейсу
             // чтобы при добавлении в задачу можно было создать Trip
+            // Также нормализуем поля: route -> route_number, route_start -> from_station_name, route_end -> to_station_name
             $enrichedRaces = array_map(function ($race) use ($fromStation, $toStation) {
-                return array_merge($race, [
+                $enriched = array_merge($race, [
                     'from_station_id' => $fromStation->id,
                     'to_station_id' => $toStation->id,
-                    'from_station_name' => $fromStation->name,
-                    'to_station_name' => $toStation->name,
+                    'from_station_name' => $race['route_start'] ?? $fromStation->name,
+                    'to_station_name' => $race['route_end'] ?? $toStation->name,
                 ]);
+                
+                // Нормализуем поле route -> route_number для единообразия
+                if (isset($race['route']) && !isset($enriched['route_number'])) {
+                    $enriched['route_number'] = $race['route'];
+                }
+                
+                // Если есть route_start и route_end в API, используем их
+                if (isset($race['route_start'])) {
+                    $enriched['from_station_name'] = $race['route_start'];
+                }
+                if (isset($race['route_end'])) {
+                    $enriched['to_station_name'] = $race['route_end'];
+                }
+                
+                return $enriched;
             }, $cancelledRaces);
 
             // Возвращаем данные рейсов в формате согласно ТЗ

@@ -84,9 +84,16 @@ class WhatsAppService
             }
 
         } catch (\Exception $e) {
-            Log::error("Failed to send WhatsApp message", [
+            Log::error("❌ WHATSAPP ОШИБКА ОТПРАВКИ", [
+                'channel' => 'whatsapp',
                 'to' => $to,
-                'error' => $e->getMessage(),
+                'profile_id' => $this->profileId,
+                'api_url' => $this->apiUrl,
+                'use_async' => $this->useAsync,
+                'error_message' => $e->getMessage(),
+                'error_class' => get_class($e),
+                'metadata' => $metadata,
+                'timestamp' => now()->toDateTimeString(),
                 'trace' => $e->getTraceAsString(),
             ]);
 
@@ -146,10 +153,18 @@ class WhatsAppService
             $responseData = $response->json();
             $messageId = $responseData['id'] ?? $responseData['message_id'] ?? $responseData['data']['id'] ?? null;
 
-            Log::info("WhatsApp message sent successfully (sync)", [
+            Log::info("✅ WHATSAPP ОТПРАВЛЕН УСПЕШНО (sync)", [
+                'channel' => 'whatsapp',
+                'mode' => 'sync',
                 'to' => $to,
+                'normalized_to' => $normalizedTo,
+                'profile_id' => $this->profileId,
                 'message_id' => $messageId,
+                'message_length' => strlen($message),
+                'api_url' => $this->apiUrl,
                 'response' => $responseData,
+                'metadata' => $metadata,
+                'timestamp' => now()->toDateTimeString(),
             ]);
 
             return [
@@ -163,10 +178,18 @@ class WhatsAppService
         $errorBody = $response->body();
         $statusCode = $response->status();
         
-        Log::error("WhatsApp API error (sync)", [
+        Log::error("❌ WHATSAPP НЕ ОТПРАВЛЕН - ОШИБКА (sync)", [
+            'channel' => 'whatsapp',
+            'mode' => 'sync',
             'to' => $to,
-            'status' => $statusCode,
-            'response' => $errorBody,
+            'normalized_to' => $normalizedTo,
+            'profile_id' => $this->profileId,
+            'message_length' => strlen($message),
+            'api_url' => $this->apiUrl,
+            'http_status' => $statusCode,
+            'error_response' => $errorBody,
+            'metadata' => $metadata,
+            'timestamp' => now()->toDateTimeString(),
         ]);
 
         // Пытаемся извлечь сообщение об ошибке из ответа
@@ -231,10 +254,18 @@ class WhatsAppService
             $responseData = $response->json();
             $taskId = $responseData['task_id'] ?? $responseData['id'] ?? $responseData['data']['task_id'] ?? null;
 
-            Log::info("WhatsApp message queued successfully (async)", [
+            Log::info("✅ WHATSAPP ПОСТАВЛЕН В ОЧЕРЕДЬ (async)", [
+                'channel' => 'whatsapp',
+                'mode' => 'async',
                 'to' => $to,
+                'normalized_to' => $normalizedTo,
+                'profile_id' => $this->profileId,
                 'task_id' => $taskId,
+                'message_length' => strlen($message),
+                'api_url' => $this->apiUrl,
                 'response' => $responseData,
+                'metadata' => $metadata,
+                'timestamp' => now()->toDateTimeString(),
             ]);
 
             return [
@@ -248,10 +279,18 @@ class WhatsAppService
         $errorBody = $response->body();
         $statusCode = $response->status();
         
-        Log::error("WhatsApp API error (async)", [
+        Log::error("❌ WHATSAPP НЕ ОТПРАВЛЕН - ОШИБКА (async)", [
+            'channel' => 'whatsapp',
+            'mode' => 'async',
             'to' => $to,
-            'status' => $statusCode,
-            'response' => $errorBody,
+            'normalized_to' => $normalizedTo,
+            'profile_id' => $this->profileId,
+            'message_length' => strlen($message),
+            'api_url' => $this->apiUrl,
+            'http_status' => $statusCode,
+            'error_response' => $errorBody,
+            'metadata' => $metadata,
+            'timestamp' => now()->toDateTimeString(),
         ]);
 
         // Пытаемся извлечь сообщение об ошибке из ответа

@@ -89,6 +89,7 @@ Route::middleware(['auth:web'])->group(function () {
         Route::get('/', 'App\Http\Controllers\Api\MySqlImportController@status');
         Route::post('/upload', 'App\Http\Controllers\Api\MySqlImportController@uploadDump');
         Route::post('/sync', 'App\Http\Controllers\Api\MySqlImportController@sync');
+        Route::post('/clear', 'App\Http\Controllers\Api\MySqlImportController@clear');
         Route::post('/test-connection', 'App\Http\Controllers\Api\MySqlImportController@testConnection');
     });
 
