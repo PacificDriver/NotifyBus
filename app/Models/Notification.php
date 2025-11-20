@@ -87,7 +87,7 @@ class Notification extends Model
     {
         $this->update([
             'status' => 'queued',
-            'queued_at' => now(),
+            'queued_at' => now('Asia/Sakhalin'),
         ]);
     }
 
@@ -95,7 +95,7 @@ class Notification extends Model
     {
         $this->update([
             'status' => 'sent',
-            'sent_at' => now(),
+            'sent_at' => now('Asia/Sakhalin'),
         ]);
     }
 
@@ -103,7 +103,7 @@ class Notification extends Model
     {
         $this->update([
             'status' => 'delivered',
-            'delivered_at' => now(),
+            'delivered_at' => now('Asia/Sakhalin'),
         ]);
     }
 
@@ -112,7 +112,7 @@ class Notification extends Model
         $this->update([
             'status' => 'failed',
             'error_message' => $errorMessage,
-            'failed_at' => now(),
+            'failed_at' => now('Asia/Sakhalin'),
         ]);
     }
 

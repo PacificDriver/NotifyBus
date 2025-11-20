@@ -35,6 +35,73 @@ class Trip extends Model
         ];
     }
 
+    // Accessors для конвертации времени в часовой пояс Asia/Sakhalin
+    protected function departureTime(): \Illuminate\Database\Eloquent\Casts\Attribute
+    {
+        return \Illuminate\Database\Eloquent\Casts\Attribute::make(
+            get: function ($value) {
+                if (!$value) {
+                    return null;
+                }
+                // Если значение уже Carbon объект
+                if ($value instanceof \Carbon\Carbon) {
+                    return $value->setTimezone('Asia/Sakhalin')->subHours(3);
+                }
+                // Если строка, парсим как UTC и конвертируем в Asia/Sakhalin, вычитаем 3 часа
+                return \Carbon\Carbon::parse($value, 'UTC')->setTimezone('Asia/Sakhalin')->subHours(3);
+            },
+            set: function ($value) {
+                if (!$value) {
+                    return null;
+                }
+                // Сохраняем как есть (Laravel сохранит в UTC)
+                return $value;
+            }
+        );
+    }
+
+    protected function arrivalTime(): \Illuminate\Database\Eloquent\Casts\Attribute
+    {
+        return \Illuminate\Database\Eloquent\Casts\Attribute::make(
+            get: function ($value) {
+                if (!$value) {
+                    return null;
+                }
+                if ($value instanceof \Carbon\Carbon) {
+                    return $value->setTimezone('Asia/Sakhalin')->subHours(3);
+                }
+                return \Carbon\Carbon::parse($value, 'UTC')->setTimezone('Asia/Sakhalin')->subHours(3);
+            },
+            set: function ($value) {
+                if (!$value) {
+                    return null;
+                }
+                return $value;
+            }
+        );
+    }
+
+    protected function cancelledAt(): \Illuminate\Database\Eloquent\Casts\Attribute
+    {
+        return \Illuminate\Database\Eloquent\Casts\Attribute::make(
+            get: function ($value) {
+                if (!$value) {
+                    return null;
+                }
+                if ($value instanceof \Carbon\Carbon) {
+                    return $value->setTimezone('Asia/Sakhalin');
+                }
+                return \Carbon\Carbon::parse($value, 'UTC')->setTimezone('Asia/Sakhalin');
+            },
+            set: function ($value) {
+                if (!$value) {
+                    return null;
+                }
+                return $value;
+            }
+        );
+    }
+
     // Связи
     public function route()
     {
@@ -78,7 +145,7 @@ class Trip extends Model
         $this->update([
             'status' => 'cancelled',
             'cancellation_reason' => $reason,
-            'cancelled_at' => now(),
+            'cancelled_at' => now('Asia/Sakhalin'),
         ]);
     }
 

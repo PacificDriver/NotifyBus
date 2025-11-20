@@ -60,7 +60,8 @@ class NotificationTaskController extends Controller
             }
 
             // Генерируем название задачи автоматически на основе текущей даты и времени
-            $title = 'Рассылка уведомлений - ' . now()->format('d.m.Y H:i:s');
+            // Используем часовой пояс Asia/Sakhalin (UTC+11)
+            $title = 'Рассылка уведомлений - ' . now('Asia/Sakhalin')->format('d.m.Y H:i:s');
             
             Log::info("Creating notification task", [
                 'user_id' => $user->id,
@@ -405,8 +406,9 @@ class NotificationTaskController extends Controller
             $arrivalTime = $this->parseRaceDateTime($raceData['dt_arrive'] ?? null);
 
             // Если нет времени отправления, используем текущую дату
+            // Используем часовой пояс Asia/Sakhalin (UTC+11)
             if (!$departureTime) {
-                $departureTime = now()->toDateTimeString();
+                $departureTime = now('Asia/Sakhalin')->toDateTimeString();
             }
 
             // Если нет времени прибытия, используем время отправления + 1 час
@@ -542,7 +544,7 @@ class NotificationTaskController extends Controller
 
             $batchIndex = 0;
             foreach ($passengers->chunk($batchSize) as $chunk) {
-                $baseDelay = now()->addSeconds($batchIndex * $delayBetweenBatches);
+                $baseDelay = now('Asia/Sakhalin')->addSeconds($batchIndex * $delayBetweenBatches);
                 $offset = 0;
 
                 foreach ($chunk as $passenger) {
@@ -876,7 +878,19 @@ class NotificationTaskController extends Controller
         }
 
         try {
-            return Carbon::parse($value)->toDateTimeString();
+            // ВАЖНО: Данные из API перевозчика приходят в UTC+3 (московское время)
+            // Парсим дату как Europe/Moscow (UTC+3) и конвертируем в UTC для сохранения в БД
+            // Laravel автоматически конвертирует в Asia/Sakhalin при чтении благодаря кастингу
+            $date = Carbon::parse($value, 'Europe/Moscow')->setTimezone('UTC');
+            
+            Log::debug('Parsed race datetime', [
+                'original' => $value,
+                'parsed_moscow' => Carbon::parse($value, 'Europe/Moscow')->format('Y-m-d H:i:s T'),
+                'converted_utc' => $date->format('Y-m-d H:i:s T'),
+                'will_display_as_sakhalin' => $date->copy()->setTimezone('Asia/Sakhalin')->format('Y-m-d H:i:s T'),
+            ]);
+            
+            return $date->toDateTimeString();
         } catch (\Exception $e) {
             Log::warning('Failed to parse race datetime', [
                 'value' => $value,
@@ -896,11 +910,39 @@ class NotificationTaskController extends Controller
         // Получаем данные о рейсе
         $tripNumber = $tripNumber ?? $trip->trip_number ?? 'N/A';
         
+        // Жестко устанавливаем часовой пояс Asia/Sakhalin (UTC+11)
+        $timezone = 'Asia/Sakhalin';
+        
+        // Форматируем время с учетом часового пояса
+        // ВАЖНО: Время в БД может быть в UTC или уже в нужном часовом поясе
+        // Проверяем текущий часовой пояс объекта и конвертируем только если нужно
+        $departureTime = null;
+        if ($trip->departure_time) {
+            if ($trip->departure_time instanceof \Carbon\Carbon) {
+                // Получаем текущий часовой пояс объекта
+                $currentTimezone = $trip->departure_time->timezone->getName();
+                
+                // Если часовой пояс уже правильный, просто используем копию
+                if ($currentTimezone === $timezone) {
+                    $departureTime = $trip->departure_time->copy();
+                } elseif ($currentTimezone === 'UTC') {
+                    // Если объект в UTC, конвертируем в нужный часовой пояс
+                    $departureTime = $trip->departure_time->copy()->setTimezone($timezone);
+                } else {
+                    // Если объект в другом часовом поясе, конвертируем через UTC
+                    $departureTime = $trip->departure_time->copy()->setTimezone('UTC')->setTimezone($timezone);
+                }
+            } else {
+                // Если это строка, парсим как UTC и конвертируем в нужный часовой пояс
+                $departureTime = \Carbon\Carbon::parse($trip->departure_time, 'UTC')->setTimezone($timezone);
+            }
+        }
+        
         // Формат даты: 31.10.25
-        $date = $trip->departure_time ? $trip->departure_time->format('d.m.y') : 'N/A';
+        $date = $departureTime ? $departureTime->format('d.m.y') : 'N/A';
         
         // Формат времени: 12:00
-        $time = $trip->departure_time ? $trip->departure_time->format('H:i') : 'N/A';
+        $time = $departureTime ? $departureTime->format('H:i') : 'N/A';
         
         // Формируем строку рейса: "№ 510 Южно-Сахалинск-Макаров"
         $routeInfo = '';

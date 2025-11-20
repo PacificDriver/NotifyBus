@@ -946,7 +946,17 @@
                     return escapeHtml(value);
                 }
 
-                return date.toLocaleString('ru-RU');
+                // Конвертируем в Asia/Sakhalin (UTC+11) и вычитаем 3 часа
+                const sakhalinTime = new Date(date.getTime() + (11 * 60 * 60 * 1000) - (3 * 60 * 60 * 1000));
+                return sakhalinTime.toLocaleString('ru-RU', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    timeZone: 'UTC'
+                });
             }
 
             function renderProcessCard(process) {

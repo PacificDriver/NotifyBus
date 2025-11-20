@@ -774,7 +774,7 @@
                         <div class="btn-group">
                             <button type="submit" class="btn btn-primary">💾 Сохранить</button>
                             <button type="button" class="btn btn-success" id="mysql-test-connection">🔍 Проверить подключение</button>
-                            <button type="button" class="btn btn-danger" id="mysql-clear-local">🗑️ Очистить локальную базу</button>
+                            <button type="button" style="display:none;" class="btn btn-danger" id="mysql-clear-local">🗑️ Очистить локальную базу</button>
                         </div>
                     </form>
                     <div id="mysql-sync-status" style="margin-top:15px;"></div>
@@ -2036,13 +2036,16 @@
             try {
                 const date = new Date(value);
                 if (isNaN(date.getTime())) return value;
-                return date.toLocaleString('ru-RU', {
+                // Конвертируем в Asia/Sakhalin (UTC+11) и вычитаем 3 часа
+                const sakhalinTime = new Date(date.getTime() + (11 * 60 * 60 * 1000) - (3 * 60 * 60 * 1000));
+                return sakhalinTime.toLocaleString('ru-RU', {
                     day: '2-digit',
                     month: '2-digit',
                     year: 'numeric',
                     hour: '2-digit',
                     minute: '2-digit',
                     second: '2-digit',
+                    timeZone: 'UTC'
                 });
             } catch (e) {
                 return value;

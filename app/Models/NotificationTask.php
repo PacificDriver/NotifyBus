@@ -34,8 +34,9 @@ class NotificationTask extends Model
 
         static::creating(function ($task) {
             // Если название не указано, генерируем автоматически на основе текущей даты и времени
+            // Используем часовой пояс Asia/Sakhalin (UTC+11)
             if (empty($task->title)) {
-                $task->title = 'Рассылка уведомлений - ' . now()->format('d.m.Y H:i:s');
+                $task->title = 'Рассылка уведомлений - ' . now('Asia/Sakhalin')->format('d.m.Y H:i:s');
             }
         });
     }

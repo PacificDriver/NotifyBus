@@ -50,7 +50,7 @@ class SendNotificationJob implements ShouldQueue
                 'passenger_id' => $this->notification->passenger_id,
                 'trip_id' => $this->notification->trip_id,
                 'status' => 'queued',
-                'queued_at' => now()->toDateTimeString(),
+                'queued_at' => now('Asia/Sakhalin')->toDateTimeString(),
             ];
 
             if ($this->notification->isEmail()) {
@@ -84,7 +84,7 @@ class SendNotificationJob implements ShouldQueue
                 'passenger_id' => $this->notification->passenger_id,
                 'trip_id' => $this->notification->trip_id,
                 'status' => 'sent',
-                'sent_at' => now()->toDateTimeString(),
+                'sent_at' => now('Asia/Sakhalin')->toDateTimeString(),
             ];
 
             if ($this->notification->isEmail()) {
@@ -172,7 +172,7 @@ class SendNotificationJob implements ShouldQueue
             'max_retries' => $this->tries,
             'error_message' => $e->getMessage(),
             'error_class' => get_class($e),
-            'timestamp' => now()->toDateTimeString(),
+            'timestamp' => now('Asia/Sakhalin')->toDateTimeString(),
         ];
 
         if ($this->notification->isEmail()) {
@@ -188,7 +188,7 @@ class SendNotificationJob implements ShouldQueue
             $this->notification->notificationTask->incrementFailedCount();
             
             $logData['status'] = 'failed';
-            $logData['failed_at'] = now()->toDateTimeString();
+            $logData['failed_at'] = now('Asia/Sakhalin')->toDateTimeString();
             $logData['final_attempt'] = true;
             
             if ($this->notification->isEmail()) {
@@ -227,7 +227,7 @@ class SendNotificationJob implements ShouldQueue
             'status' => 'failed',
             'error_message' => $exception->getMessage(),
             'error_class' => get_class($exception),
-            'failed_at' => now()->toDateTimeString(),
+            'failed_at' => now('Asia/Sakhalin')->toDateTimeString(),
             'trace' => $exception->getTraceAsString(),
         ];
 

@@ -174,16 +174,39 @@ class MessageTemplate extends Model
             'final_trip_number' => $tripNumber,
         ]);
 
-        // Получаем часовой пояс из конфига (по умолчанию Asia/Sakhalin = UTC+11)
-        $timezone = config('app.timezone', 'Asia/Sakhalin');
+        // Жестко устанавливаем часовой пояс Asia/Sakhalin (UTC+11)
+        $timezone = 'Asia/Sakhalin';
         
         // Форматируем время с учетом часового пояса
+        // ВАЖНО: Время в БД может быть в UTC или уже в нужном часовом поясе
+        // Проверяем текущий часовой пояс объекта и конвертируем только если нужно
         $formatTime = function($carbonDate) use ($timezone) {
             if (!$carbonDate) {
-                return 'не указано';
+                return null;
             }
-            // Преобразуем в нужный часовой пояс и форматируем
-            return $carbonDate->setTimezone($timezone);
+            
+            // Если это уже Carbon объект
+            if ($carbonDate instanceof \Carbon\Carbon) {
+                // Получаем текущий часовой пояс объекта
+                $currentTimezone = $carbonDate->timezone->getName();
+                
+                // Если часовой пояс уже правильный, просто возвращаем копию
+                if ($currentTimezone === $timezone) {
+                    return $carbonDate->copy();
+                }
+                
+                // Если объект в UTC, конвертируем в нужный часовой пояс
+                if ($currentTimezone === 'UTC') {
+                    return $carbonDate->copy()->setTimezone($timezone);
+                }
+                
+                // Если объект в другом часовом поясе, конвертируем через UTC
+                return $carbonDate->copy()->setTimezone('UTC')->setTimezone($timezone);
+            }
+            
+            // Если это строка, парсим и конвертируем в нужный часовой пояс
+            // Предполагаем, что строка в UTC (как Laravel хранит в БД)
+            return \Carbon\Carbon::parse($carbonDate, 'UTC')->setTimezone($timezone);
         };
 
         $departureTime = $trip->departure_time ? $formatTime($trip->departure_time) : null;
