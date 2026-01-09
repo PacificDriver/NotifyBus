@@ -340,6 +340,9 @@
             <a href="/" style="text-decoration: none; color: #667eea;">📱 Панель оператора</a>
         </h1>
         <div style="display: flex; align-items: center; gap: 20px;">
+            <a href="/dashboard/drivers" style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; text-decoration: none; display: inline-block;">
+                🚗 Водители
+            </a>
             <span style="color: #666;">Оператор: <strong>{{ auth()->user()->name ?? 'Тестовый пользователь' }}</strong></span>
             <form method="POST" action="{{ route('logout') }}" style="margin: 0;">
                 @csrf
