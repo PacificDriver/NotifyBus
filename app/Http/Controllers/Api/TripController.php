@@ -21,6 +21,77 @@ class TripController extends Controller
     }
 
     /**
+     * Получить список ВСЕХ рейсов из API перевозчика
+     * GET /api/races/all?from={id_from}&to={id_to}&date={Y-m-d}
+     */
+    public function getAll(Request $request): JsonResponse
+    {
+        $request->validate([
+            'from' => 'required|exists:stations,id',
+            'to' => 'required|exists:stations,id',
+            'date' => 'required|date',
+        ]);
+
+        try {
+            $fromStation = Station::findOrFail($request->input('from'));
+            $toStation = Station::findOrFail($request->input('to'));
+
+            $fromHasExternalId = !empty($fromStation->external_id) && $fromStation->external_id !== '0';
+            $toHasExternalId = !empty($toStation->external_id) && $toStation->external_id !== '0';
+            
+            if (!$fromHasExternalId || !$toHasExternalId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Станции должны иметь external_id. Пожалуйста, сначала синхронизируйте станции.',
+                ], 400);
+            }
+
+            // Получаем ВСЕ рейсы (не фильтруем по active)
+            $races = $this->carrierApiService->getRaces(
+                (int)$fromStation->external_id,
+                (int)$toStation->external_id,
+                $request->input('date')
+            );
+
+            $enrichedRaces = array_map(function ($race) use ($fromStation, $toStation) {
+                return array_merge($race, [
+                    'from_station_id' => $fromStation->id,
+                    'to_station_id' => $toStation->id,
+                    'from_station_name' => $race['route_start'] ?? $fromStation->name,
+                    'to_station_name' => $race['route_end'] ?? $toStation->name,
+                ]);
+            }, $races);
+
+            return response()->json([
+                'success' => true,
+                'data' => array_values($enrichedRaces),
+                'count' => count($enrichedRaces),
+                'from_station' => [
+                    'id' => $fromStation->id,
+                    'name' => $fromStation->name,
+                    'external_id' => $fromStation->external_id,
+                ],
+                'to_station' => [
+                    'id' => $toStation->id,
+                    'name' => $toStation->name,
+                    'external_id' => $toStation->external_id,
+                ],
+                'date' => $request->input('date'),
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to get all races", [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Получить список отмененных рейсов из API перевозчика
      * GET /races?from={id_from}&to={id_to}&date={DD.MM.YY}
      * Фильтрация: active = false

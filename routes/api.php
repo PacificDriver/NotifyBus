@@ -34,7 +34,8 @@ Route::middleware(['auth:web'])->group(function () {
     
     // Рейсы из API перевозчика (альтернативный endpoint)
     Route::prefix('races')->group(function () {
-        Route::get('/', 'App\Http\Controllers\Api\TripController@getCancelled'); // GET /api/races?from={id}&to={id}&date={Y-m-d}
+        Route::get('/all', 'App\Http\Controllers\Api\TripController@getAll'); // GET /api/races/all?from={id}&to={id}&date={Y-m-d} - ВСЕ рейсы
+        Route::get('/', 'App\Http\Controllers\Api\TripController@getCancelled'); // GET /api/races?from={id}&to={id}&date={Y-m-d} - только отмененные
     });
 
     // История поиска
@@ -109,6 +110,31 @@ Route::middleware(['auth:web'])->group(function () {
         Route::post('/', 'App\Http\Controllers\Api\OperatorController@store');
         Route::put('/{id}', 'App\Http\Controllers\Api\OperatorController@update');
         Route::delete('/{id}', 'App\Http\Controllers\Api\OperatorController@destroy');
+    });
+
+    // Управление водителями (доступно админам и операторам)
+    Route::prefix('drivers')->group(function () {
+        Route::get('/', 'App\Http\Controllers\Api\Admin\DriverController@index');
+        Route::post('/', 'App\Http\Controllers\Api\Admin\DriverController@store');
+        Route::get('/{id}', 'App\Http\Controllers\Api\Admin\DriverController@show');
+        Route::put('/{id}', 'App\Http\Controllers\Api\Admin\DriverController@update');
+        Route::delete('/{id}', 'App\Http\Controllers\Api\Admin\DriverController@destroy');
+        Route::post('/{id}/assign-race', 'App\Http\Controllers\Api\Admin\DriverController@assignRace');
+        Route::post('/{id}/trips', 'App\Http\Controllers\Api\Admin\DriverController@assignTrip');
+        Route::delete('/{id}/trips/{tripId}', 'App\Http\Controllers\Api\Admin\DriverController@unassignTrip');
+        Route::get('/{id}/trips', 'App\Http\Controllers\Api\Admin\DriverController@trips');
+    });
+});
+
+// API для водителей (публичная авторизация)
+Route::prefix('drivers')->group(function () {
+    Route::post('/login', 'App\Http\Controllers\Api\DriverAuthController@login');
+    
+    // Защищенные роуты для авторизованных водителей
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/logout', 'App\Http\Controllers\Api\DriverAuthController@logout');
+        Route::get('/me', 'App\Http\Controllers\Api\DriverAuthController@me');
+        Route::get('/me/trips', 'App\Http\Controllers\Api\DriverTripController@index');
     });
 });
 

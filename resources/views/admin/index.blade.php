@@ -651,6 +651,15 @@
                     </div>
                 </div>
 
+                <div class="setting-item">
+                    <small>Команда</small>
+                    <h3>🚗 Управление водителями</h3>
+                    <p>Управление водителями, назначение рейсов, авторизация для терминалов MPOS.</p>
+                    <div class="setting-actions">
+                        <a href="/admin/drivers" class="btn btn-primary" style="text-decoration: none;">Управлять водителями</a>
+                    </div>
+                </div>
+
               
         </div>
 

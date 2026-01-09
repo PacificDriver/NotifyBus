@@ -118,6 +118,13 @@ class Trip extends Model
         return $this->hasMany(Notification::class);
     }
 
+    public function drivers()
+    {
+        return $this->belongsToMany(Driver::class, 'driver_trip')
+            ->withPivot(['assigned_by', 'assigned_at'])
+            ->withTimestamps();
+    }
+
     // Scopes
     public function scopeCancelled($query)
     {
