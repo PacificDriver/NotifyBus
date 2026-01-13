@@ -126,15 +126,15 @@ Route::middleware(['auth:web'])->group(function () {
     });
 });
 
-// API для водителей (публичная авторизация)
-Route::prefix('drivers')->group(function () {
-    Route::post('/login', 'App\Http\Controllers\Api\DriverAuthController@login');
+// API для MPOS терминалов (публичная авторизация водителей)
+Route::prefix('mpos')->group(function () {
+    Route::post('/drivers/login', 'App\Http\Controllers\Api\DriverAuthController@login');
     
     // Защищенные роуты для авторизованных водителей
     Route::middleware('auth:sanctum')->group(function () {
-        Route::post('/logout', 'App\Http\Controllers\Api\DriverAuthController@logout');
-        Route::get('/me', 'App\Http\Controllers\Api\DriverAuthController@me');
-        Route::get('/me/trips', 'App\Http\Controllers\Api\DriverTripController@index');
+        Route::post('/drivers/logout', 'App\Http\Controllers\Api\DriverAuthController@logout');
+        Route::get('/drivers/me', 'App\Http\Controllers\Api\DriverAuthController@me');
+        Route::get('/drivers/me/trips', 'App\Http\Controllers\Api\DriverTripController@index');
     });
 });
 
