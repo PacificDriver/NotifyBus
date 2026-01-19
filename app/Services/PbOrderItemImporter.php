@@ -442,6 +442,7 @@ class PbOrderItemImporter
             'ticket_status' => $this->mapTicketStatus($data['STATUS'] ?? null),
             'ticket_purchased_at' => $this->parseDateTime($data['ROUTE_BEGIN'] ?? null),
             'external_payload' => $data,
+            'data_source' => 'pb_order_item',
         ];
 
         // Фильтруем null значения, но всегда включаем trip_id, даже если он null
@@ -629,6 +630,101 @@ class PbOrderItemImporter
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /**
+     * Загрузить пассажиров из Startport API для отмененных рейсов
+     * 
+     * @return array{startport_trips_processed: int, startport_passengers_loaded: int, startport_passengers_saved: int, startport_errors: int}
+     */
+    public function loadStartportPassengers(): array
+    {
+        $stats = [
+            'startport_trips_processed' => 0,
+            'startport_passengers_loaded' => 0,
+            'startport_passengers_saved' => 0,
+            'startport_errors' => 0,
+        ];
+
+        $startportService = app(\App\Services\StartportPassengerService::class);
+
+        // Проверяем, включен ли Startport
+        if (!$startportService->isEnabled()) {
+            Log::info('PbOrderItemImporter: Startport API не настроен, пропускаем загрузку пассажиров');
+            return $stats;
+        }
+
+        // Получаем все рейсы (без фильтрации по статусу и дате)
+        // Это аналогично старому импорту, который загружает все записи из pb_order_item
+        $trips = Trip::all();
+
+        if ($trips->isEmpty()) {
+            Log::info('PbOrderItemImporter: Нет рейсов для загрузки из Startport');
+            return $stats;
+        }
+
+        Log::info('PbOrderItemImporter: Начинаем загрузку пассажиров из Startport', [
+            'trips_count' => $trips->count(),
+        ]);
+
+        foreach ($trips as $trip) {
+            $stats['startport_trips_processed']++;
+
+            try {
+                $startportPassengers = $startportService->getPassengersByRoute($trip->external_id);
+                $stats['startport_passengers_loaded'] += count($startportPassengers);
+
+                Log::debug('PbOrderItemImporter: Загружены пассажиры из Startport', [
+                    'trip_id' => $trip->id,
+                    'external_id' => $trip->external_id,
+                    'passengers_count' => count($startportPassengers),
+                ]);
+
+                // Сохраняем пассажиров в базу данных
+                foreach ($startportPassengers as $passengerData) {
+                    try {
+                        $normalizedData = $startportService->normalizePassengerData(
+                            $passengerData,
+                            $trip->id,
+                            $trip->external_id
+                        );
+
+                        // Используем documentId + ticketId как уникальный идентификатор
+                        $uniqueAttributes = [
+                            'external_race_id' => $normalizedData['external_race_id'],
+                            'ticket_uid' => $normalizedData['ticket_uid'],
+                        ];
+
+                        // Фильтруем null значения для обновления
+                        $updateData = array_filter($normalizedData, fn($value) => $value !== null);
+                        $updateData['trip_id'] = $trip->id; // Всегда обновляем trip_id
+
+                        Passenger::updateOrCreate($uniqueAttributes, $updateData);
+                        $stats['startport_passengers_saved']++;
+
+                    } catch (\Exception $e) {
+                        $stats['startport_errors']++;
+                        Log::error('PbOrderItemImporter: Ошибка сохранения пассажира из Startport', [
+                            'trip_id' => $trip->id,
+                            'passenger_data' => $passengerData,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+            } catch (\Exception $e) {
+                $stats['startport_errors']++;
+                Log::warning('PbOrderItemImporter: Ошибка загрузки пассажиров из Startport для рейса', [
+                    'trip_id' => $trip->id,
+                    'external_id' => $trip->external_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        Log::info('PbOrderItemImporter: Загрузка пассажиров из Startport завершена', $stats);
+
+        return $stats;
     }
 }
 

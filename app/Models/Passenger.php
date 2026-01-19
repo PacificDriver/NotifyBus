@@ -35,6 +35,7 @@ class Passenger extends Model
         'ticket_number',
         'ticket_purchased_at',
         'external_payload',
+        'data_source',
     ];
 
     protected function casts(): array
@@ -48,6 +49,7 @@ class Passenger extends Model
             'document_issued_at' => 'date',
             'ticket_purchased_at' => 'datetime',
             'external_payload' => 'array',
+            'data_source' => 'string',
         ];
     }
 
@@ -88,6 +90,14 @@ class Passenger extends Model
     public function canReceiveNotifications(): bool
     {
         return $this->hasEmail() || $this->hasPhone();
+    }
+
+    /**
+     * Получить группу email настроек на основе источника данных
+     */
+    public function getEmailGroup(): string
+    {
+        return $this->data_source === 'startport' ? 'startport_email' : 'email';
     }
 }
 

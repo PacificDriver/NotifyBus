@@ -637,6 +637,59 @@
                         <button type="button" class="btn btn-success" onclick="testEmail()">📧 Отправить тестовое письмо</button>
                     </div>
                 </form>
+
+                <hr style="margin: 40px 0; border: none; border-top: 2px solid #e0e0e0;">
+
+                <h2 style="margin-top: 30px;">Настройки Email для Starport (SMTP)</h2>
+                <form id="startport-email-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="startport_email_host">SMTP Host</label>
+                            <input type="text" id="startport_email_host" name="host" placeholder="smtp.gmail.com">
+                        </div>
+                        <div class="form-group">
+                            <label for="startport_email_port">Port</label>
+                            <input type="number" id="startport_email_port" name="port" value="587" placeholder="587">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="startport_email_username">Username</label>
+                            <input type="text" id="startport_email_username" name="username" placeholder="your-email@gmail.com">
+                        </div>
+                        <div class="form-group">
+                            <label for="startport_email_password">Password</label>
+                            <input type="password" id="startport_email_password" name="password" placeholder="Пароль или App Password">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="startport_email_encryption">Encryption</label>
+                            <select id="startport_email_encryption" name="encryption">
+                                <option value="tls">TLS</option>
+                                <option value="ssl">SSL</option>
+                                <option value="">None</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="startport_email_from_address">From Address</label>
+                            <input type="email" id="startport_email_from_address" name="from_address" placeholder="noreply@example.com">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="startport_email_test_address">Тестовый Email</label>
+                        <input type="email" id="startport_email_test_address" placeholder="test@example.com">
+                        <small>Email для отправки тестового письма</small>
+                    </div>
+
+                    <div class="btn-group">
+                        <button type="submit" class="btn btn-primary">💾 Сохранить настройки</button>
+                        <button type="button" class="btn btn-success" onclick="testStartportEmail()">📧 Отправить тестовое письмо</button>
+                    </div>
+                </form>
             </div>
 
             <!-- Carrier API Settings -->
@@ -685,8 +738,8 @@
                 <form id="startport-form">
                     <div class="form-group">
                         <label for="startport_url">URL API</label>
-                        <input type="text" id="startport_url" name="url" placeholder="https://startport.ru" required>
-                        <small>Базовый URL API startport.ru (используйте HTTPS)</small>
+                        <input type="text" id="startport_url" name="url" placeholder="http://startport.ru" required>
+                        <small>Базовый URL API startport.ru</small>
                     </div>
 
                     <div class="form-group">
@@ -1132,6 +1185,7 @@
                     // Заполнить формы
                     fillForm('whatsapp', data.data.whatsapp || {});
                     fillForm('email', data.data.email || {});
+                    fillForm('startport_email', data.data.startport_email || {});
                     fillForm('carrier_api', data.data.carrier_api || {});
                     fillForm('startport', data.data.startport || {});
                     fillForm('notification', data.data.notification || {});
@@ -1264,6 +1318,11 @@
         document.getElementById('email-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             await saveSettings('email', new FormData(e.target));
+        });
+
+        document.getElementById('startport-email-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await saveSettings('startport_email', new FormData(e.target));
         });
 
         document.getElementById('carrier-form').addEventListener('submit', async (e) => {
@@ -1814,6 +1873,47 @@
                 }
             } catch (error) {
                 showAlert('⚠️ В текущий момент сервис недоступен.\n\nОшибка отправки тестового письма: ' + error.message + '\n\nОбратитесь к администратору для проверки настроек Email.', 'error');
+            }
+        }
+
+        async function testStartportEmail() {
+            const testEmail = document.getElementById('startport_email_test_address').value;
+            if (!testEmail) {
+                showAlert('Укажите email для тестирования', 'error');
+                return;
+            }
+
+            showAlert('Отправка тестового письма...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/settings/test/email`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ 
+                        test_email: testEmail,
+                        email_group: 'startport_email'
+                    }),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('✅ Тестовое письмо отправлено с Email для Starport!', 'success');
+                } else {
+                    throw new Error(data.message || 'Неизвестная ошибка отправки');
+                }
+            } catch (error) {
+                showAlert('⚠️ Ошибка отправки тестового письма с Email для Starport:\n\n' + error.message + '\n\nПроверьте настройки SMTP.', 'error');
             }
         }
 

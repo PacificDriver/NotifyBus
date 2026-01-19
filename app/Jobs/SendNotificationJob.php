@@ -110,11 +110,16 @@ class SendNotificationJob implements ShouldQueue
     {
         $emailService = app(EmailService::class);
         
+        // Извлекаем email_group из metadata (если не указан, используется 'email' по умолчанию)
+        $metadata = $this->notification->metadata ?? [];
+        $emailGroup = $metadata['email_group'] ?? 'email';
+        
         $emailService->send(
             to: $this->notification->recipient,
             subject: $this->notification->subject,
             body: $this->notification->message,
-            metadata: $this->notification->metadata ?? []
+            metadata: $metadata,
+            emailGroup: $emailGroup
         );
     }
 

@@ -65,7 +65,18 @@ class ImportPbOrderItems extends Command
         if ($options['dry_run'] ?? false) {
             $this->warn('Импорт выполнен в режиме dry-run. Изменения не сохранены.');
         } else {
-            $this->info('Импорт завершён успешно.');
+            $this->info('Импорт pb_order_item завершён успешно.');
+            
+            // Загружаем пассажиров из Startport API для отмененных рейсов
+            $this->info('Загрузка пассажиров из Startport API...');
+            $startportStats = $importer->loadStartportPassengers();
+            
+            if ($startportStats['startport_trips_processed'] > 0) {
+                $this->info('Загрузка из Startport завершена:');
+                $this->renderStatsTable($startportStats);
+            } else {
+                $this->info('Startport API не настроен или нет отмененных рейсов.');
+            }
         }
 
         return Command::SUCCESS;

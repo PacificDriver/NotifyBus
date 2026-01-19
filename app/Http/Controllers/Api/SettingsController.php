@@ -167,7 +167,7 @@ class SettingsController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'group' => 'required|string|in:whatsapp,email,carrier_api,startport,external_db,notification,importer,mysql_bridge',
+            'group' => 'required|string|in:whatsapp,email,carrier_api,startport,startport_email,external_db,notification,importer,mysql_bridge',
             'settings' => 'required|array',
         ]);
 
@@ -194,11 +194,6 @@ class SettingsController extends Controller
                 // Пропускаем пустые значения
                 if ($value === '' || $value === null) {
                     continue;
-                }
-                
-                // Автоматически преобразуем HTTP в HTTPS для startport.ru URL
-                if ($group === 'startport' && $key === 'url' && str_starts_with($value, 'http://startport.ru')) {
-                    $value = str_replace('http://', 'https://', $value);
                 }
                 
                     // Если значение уже замаскировано (начинается с ***), не меняем
@@ -737,6 +732,7 @@ class SettingsController extends Controller
     {
         try {
             $email = $request->input('test_email', config('mail.from.address'));
+            $emailGroup = $request->input('email_group', 'email'); // По умолчанию используем группу 'email'
             
             if (empty($email)) {
                 return response()->json([
@@ -747,11 +743,13 @@ class SettingsController extends Controller
 
             $emailService = app(EmailService::class);
             
-            // Отправляем тестовое письмо
+            // Отправляем тестовое письмо с указанной группой настроек
             $emailService->send(
                 to: $email,
                 subject: 'Тестовое письмо от системы уведомлений',
-                body: 'Это тестовое письмо для проверки настроек SMTP.'
+                body: 'Это тестовое письмо для проверки настроек SMTP.',
+                metadata: ['email_group' => $emailGroup],
+                emailGroup: $emailGroup
             );
 
             return response()->json([
@@ -896,11 +894,6 @@ class SettingsController extends Controller
                 $testUrl = $this->getSettingValue('startport', 'url');
             }
             
-            // Автоматически преобразуем HTTP в HTTPS для startport.ru
-            if ($testUrl && str_starts_with($testUrl, 'http://startport.ru')) {
-                $testUrl = str_replace('http://', 'https://', $testUrl);
-            }
-            
             // Проверяем, что есть URL и ключ
             if (empty($testUrl) || empty($testKey)) {
                 throw new \Exception('URL API и ключ доступа обязательны для проверки подключения. Пожалуйста, настройте их в разделе "Startport" выше.');
@@ -1004,6 +997,7 @@ class SettingsController extends Controller
             'email' => ['password'],
             'carrier_api' => ['key'],
             'startport' => ['api_key'],
+            'startport_email' => ['password'],
             'external_db' => ['password'],
             'mysql_bridge' => ['password'],
             default => [],
