@@ -11,6 +11,7 @@ use App\Models\Passenger;
 use App\Models\Route;
 use App\Models\Station;
 use App\Models\Trip;
+use App\Services\StartportPassengerService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -130,6 +131,7 @@ class NotificationTaskController extends Controller
             'races_data' => 'required|array|min:1',
             'races_data.*.id' => 'required|string',
             'races_data.*.active' => 'nullable|boolean',
+            'races_data.*.status' => 'nullable|in:scheduled,cancelled,delayed,completed',
             'races_data.*.route_tz' => 'nullable|integer',
             'races_data.*.dt_depart' => 'nullable|string',
             'races_data.*.dt_arrive' => 'nullable|string',
@@ -321,11 +323,91 @@ class NotificationTaskController extends Controller
                 'trip_ids' => $tripIds,
             ]);
 
+            // Загружаем пассажиров из Startport API (если настроен)
+            // Пассажиры из pb_order_item уже должны быть загружены фоновым процессом импорта
+            $startportService = app(StartportPassengerService::class);
+            $startportPassengersCount = 0;
+
+            if ($startportService->isEnabled()) {
+                Log::info("Startport API is enabled, loading passengers from Startport", [
+                    'task_id' => $id,
+                    'race_ids' => $raceIds,
+                ]);
+
+                foreach ($trips as $trip) {
+                    try {
+                        $startportPassengers = $startportService->getPassengersByRoute($trip->external_id);
+                        
+                        Log::info("Loaded passengers from Startport for trip", [
+                            'trip_id' => $trip->id,
+                            'external_id' => $trip->external_id,
+                            'passengers_count' => count($startportPassengers),
+                        ]);
+
+                        // Сохраняем пассажиров в базу данных
+                        foreach ($startportPassengers as $passengerData) {
+                            try {
+                                $normalizedData = $startportService->normalizePassengerData(
+                                    $passengerData,
+                                    $trip->id,
+                                    $trip->external_id
+                                );
+
+                                // Используем documentId + ticketId как уникальный идентификатор
+                                $uniqueAttributes = [
+                                    'external_race_id' => $normalizedData['external_race_id'],
+                                    'ticket_uid' => $normalizedData['ticket_uid'],
+                                ];
+
+                                // Фильтруем null значения для обновления
+                                $updateData = array_filter($normalizedData, fn($value) => $value !== null);
+                                $updateData['trip_id'] = $trip->id; // Всегда обновляем trip_id
+
+                                $passenger = Passenger::updateOrCreate($uniqueAttributes, $updateData);
+                                $startportPassengersCount++;
+
+                                Log::debug("Saved passenger from Startport", [
+                                    'passenger_id' => $passenger->id,
+                                    'trip_id' => $trip->id,
+                                    'document_id' => $passengerData['documentId'] ?? null,
+                                ]);
+
+                            } catch (\Exception $e) {
+                                Log::error("Failed to save passenger from Startport", [
+                                    'trip_id' => $trip->id,
+                                    'passenger_data' => $passengerData,
+                                    'error' => $e->getMessage(),
+                                ]);
+                            }
+                        }
+
+                    } catch (\Exception $e) {
+                        Log::warning("Failed to load passengers from Startport for trip", [
+                            'trip_id' => $trip->id,
+                            'external_id' => $trip->external_id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+                Log::info("Loaded passengers from Startport", [
+                    'task_id' => $id,
+                    'passengers_count' => $startportPassengersCount,
+                ]);
+            } else {
+                Log::info("Startport API is not enabled, skipping", [
+                    'task_id' => $id,
+                ]);
+            }
+
+            // Получаем всех пассажиров из базы данных
+            // (уже загруженных из pb_order_item фоновым процессом + только что загруженных из Startport)
             $passengers = Passenger::whereIn('trip_id', $tripIds)->get();
 
             Log::info("Found passengers", [
                 'task_id' => $id,
                 'passengers_count' => $passengers->count(),
+                'from_startport' => $startportPassengersCount,
                 'passenger_ids' => $passengers->pluck('id')->take(10)->toArray(), // Первые 10 для примера
             ]);
 
@@ -337,12 +419,13 @@ class NotificationTaskController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Trips created successfully, but no passengers found in local database for provided race IDs',
+                    'message' => 'Trips created successfully, but no passengers found in database for provided race IDs',
                     'data' => [
                         'total_loaded' => 0,
                         'saved_count' => 0,
                         'valid_passengers_count' => 0,
                         'trip_ids' => $tripIds,
+                        'startport_loaded' => $startportPassengersCount,
                     ],
                 ]);
             }
@@ -358,12 +441,13 @@ class NotificationTaskController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Passengers loaded from local database successfully',
+                'message' => 'Passengers loaded successfully',
                 'data' => [
                     'total_loaded' => $passengers->count(),
                     'saved_count' => $passengers->count(),
                     'valid_passengers_count' => $validPassengersCount,
                     'trip_ids' => $tripIds,
+                    'startport_loaded' => $startportPassengersCount,
                 ],
             ]);
         } catch (\Exception $e) {
@@ -427,13 +511,23 @@ class NotificationTaskController extends Controller
             }
 
             // Создаем Trip
+            // Приоритет статуса: 1) status из races_data (установлен оператором), 2) active из API
+            $status = 'scheduled'; // По умолчанию
+            if (isset($raceData['status'])) {
+                // Если оператор установил статус вручную
+                $status = $raceData['status'];
+            } elseif (isset($raceData['active'])) {
+                // Если статус не установлен, используем active из API
+                $status = $raceData['active'] ? 'scheduled' : 'cancelled';
+            }
+            
             $trip = Trip::create([
                 'route_id' => $route->id,
                 'trip_number' => $raceData['trip_number'] ?? $raceData['route_number'] ?? $raceData['id'],
                 'external_id' => $raceData['id'],
                 'departure_time' => $departureTime,
                 'arrival_time' => $arrivalTime,
-                'status' => ($raceData['active'] ?? true) ? 'scheduled' : 'cancelled',
+                'status' => $status,
                 'total_seats' => null,
                 'available_seats' => null,
             ]);

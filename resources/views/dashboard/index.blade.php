@@ -153,6 +153,21 @@
             border-color: #dc3545;
         }
         
+        .trip-item.active {
+            background: #f8fff9;
+            border-left: 4px solid #2b8a3e;
+        }
+        
+        .trip-item.active:hover {
+            border-color: #2b8a3e;
+            background: #e6f9e8;
+        }
+        
+        .trip-item.active.selected {
+            background: #e6f9e8;
+            border-color: #2b8a3e;
+        }
+        
         .passenger-list {
             max-height: 400px;
             overflow-y: auto;
@@ -175,8 +190,8 @@
         }
         
         .badge-success {
-            background: #d3f9d8;
-            color: #2f9e44;
+            background: #2b8a3e;
+            color: white;
         }
         
         .badge-warning {
@@ -384,11 +399,11 @@
             </div>
         </div>
         
-        <!-- Шаг 2: Поиск отмененных рейсов -->
+        <!-- Шаг 2: Поиск рейсов -->
         <div class="card" v-if="currentTask && currentTaskRacesCount === 0" ref="stepSearch">
-            <h3 style="margin-bottom: 15px; color: #555;">Шаг 2: Найти отмененные рейсы</h3>
+            <h3 style="margin-bottom: 15px; color: #555;">Шаг 2: Найти рейсы</h3>
             <p style="color: #666; margin-bottom: 20px;">
-                Задача «<strong>@{{ currentTask.title }}</strong>» создана. Теперь найдите отмененные рейсы.
+                Задача «<strong>@{{ currentTask.title }}</strong>» создана. Теперь найдите рейсы для рассылки.
             </p>
                 <div class="grid">
                     <div class="form-group">
@@ -421,15 +436,17 @@
                 </div>
                 <button class="btn btn-primary" @click="searchCancelledRaces" :disabled="searching">
                     <span v-if="searching">⏳ Поиск...</span>
-                    <span v-else>🔍 Найти отмененные рейсы</span>
+                    <span v-else>🔍 Найти рейсы</span>
                 </button>
             
             <!-- Выбор найденных рейсов -->
             <div v-if="races.length > 0" style="margin-top: 30px;">
-                <h4 style="margin-bottom: 15px; color: #555;">Шаг 3: Выбор отмененных рейсов</h4>
+                <h4 style="margin-bottom: 15px; color: #555;">Шаг 3: Выбор рейсов</h4>
                 <div style="padding: 12px; background: #fff3cd; border-left: 4px solid #f08c00; border-radius: 4px; margin-bottom: 15px;">
                     <p style="margin: 0; color: #856404;">
-                        <strong>ℹ️ Найдено отмененных рейсов: <span style="color: #c92a2a;">@{{ races.length }}</span></strong>
+                        <strong>ℹ️ Найдено рейсов: @{{ races.length }}</strong>
+                        <span style="margin-left: 10px; color: #c92a2a;">Отмененных: @{{ cancelledCount }}</span>
+                        <span style="margin-left: 10px; color: #2b8a3e;">Активных: @{{ activeCount }}</span>
                     </p>
                 </div>
                 
@@ -440,11 +457,10 @@
                     </label>
                 </div>
                 
-                <div class="grid" style="max-height: 400px; overflow-y: auto; padding: 10px;">
+                <div style="padding: 10px;">
                     <div v-for="race in races" :key="race.id" 
-                         class="trip-item cancelled" 
-                         :class="{ selected: selectedRaces.includes(race.id) }"
-                         style="display: flex; align-items: flex-start; gap: 10px;">
+                         :class="['trip-item', race.active === false ? 'cancelled' : 'active', { selected: selectedRaces.includes(race.id) }]"
+                         style="display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px;">
                         <input type="checkbox" 
                                :value="race.id" 
                                v-model="selectedRaces"
@@ -452,8 +468,8 @@
                         <div style="flex: 1;">
                             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                                 <strong>Рейс ID: @{{ race.id }}</strong>
-                                <span class="badge badge-danger" style="font-size: 0.75rem; padding: 2px 8px;">
-                                    ❌ Отменен
+                                <span :class="race.active === false ? 'badge badge-danger' : 'badge badge-success'" style="font-size: 0.75rem; padding: 2px 8px;">
+                                    @{{ race.active === false ? '❌ Отменен' : '✅ Активен' }}
                                 </span>
                             </div>
                             <div style="margin-top: 8px; font-size: 0.9rem; color: #666;">
@@ -465,6 +481,20 @@
                                 </div>
                                 <div v-if="race.route_tz !== undefined && race.route_tz !== null" style="margin-bottom: 4px;">
                                     <span style="color: #888;">🌍</span> <strong>Часовой пояс:</strong> UTC+@{{ race.route_tz }}
+                                </div>
+                                <div v-if="race.provider" style="margin-bottom: 4px;">
+                                    <span style="color: #888;">🚌</span> <strong>Провайдер:</strong> @{{ race.provider }}
+                                </div>
+                                <div style="margin-top: 10px;">
+                                    <label style="font-size: 0.9rem; color: #555; font-weight: 600; display: block; margin-bottom: 4px;">Статус рейса:</label>
+                                    <select v-model="race.status" 
+                                            @change="updateRaceStatus(race)"
+                                            style="padding: 6px 10px; border-radius: 6px; border: 2px solid #ddd; font-size: 0.9rem; width: 100%; max-width: 200px;">
+                                        <option value="scheduled">Запланирован</option>
+                                        <option value="cancelled">Отменен</option>
+                                        <option value="delayed">Задержан</option>
+                                        <option value="completed">Завершен</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>
@@ -481,9 +511,9 @@
             
             <!-- Сообщение, когда поиск выполнен, но рейсов не найдено -->
             <div v-if="races.length === 0 && searchPerformed && !searching" style="margin-top: 20px; padding: 20px; background: #fff3cd; border-radius: 8px; color: #856404;">
-                <strong>ℹ️ Отмененных рейсов не найдено</strong>
+                <strong>ℹ️ Рейсов не найдено</strong>
                 <div style="margin-top: 10px; font-size: 0.9rem;">
-                    <p>Для выбранных параметров отмененных рейсов не найдено:</p>
+                    <p>Для выбранных параметров рейсов не найдено:</p>
                     <ul style="margin-top: 8px; padding-left: 20px;">
                         <li>Станция отправления: <strong>@{{ getStationName(searchForm.from) }}</strong></li>
                         <li>Станция прибытия: <strong>@{{ getStationName(searchForm.to) }}</strong></li>
@@ -517,6 +547,28 @@
                 Задача: <strong>@{{ currentTask.title }}</strong><br>
                 Рейсов в задаче: <strong>@{{ currentTaskRacesCount }}</strong>
             </p>
+            
+            <!-- Отображение добавленных рейсов со статусами -->
+            <div v-if="currentTask && currentTask.races_data && currentTask.races_data.length > 0" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                <h5 style="margin-bottom: 10px; color: #555;">Добавленные рейсы:</h5>
+                <div v-for="race in currentTask.races_data" :key="race.id" 
+                     style="padding: 10px; background: white; border-radius: 6px; margin-bottom: 8px; border-left: 4px solid #667eea;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>Рейс ID:</strong> @{{ race.id }}
+                            <span v-if="race.trip_number" style="margin-left: 10px; color: #666;">
+                                (@{{ race.trip_number }})
+                            </span>
+                        </div>
+                        <span :class="getStatusBadgeClass(race.status || 'scheduled')">
+                            @{{ getStatusLabel(race.status || 'scheduled') }}
+                        </span>
+                    </div>
+                    <div v-if="race.from_station_name && race.to_station_name" style="margin-top: 5px; font-size: 0.9rem; color: #666;">
+                        @{{ race.from_station_name }} → @{{ race.to_station_name }}
+                    </div>
+                </div>
+            </div>
             
             <div style="margin-bottom: 20px;">
                 <div v-if="loadingPassengers" style="padding: 12px; background: #e8f0fe; border-radius: 8px; color: #1a54b3;">
@@ -648,7 +700,7 @@
         <div class="card">
             <h3 style="margin-bottom: 15px; color: #555;">🕘 История поиска</h3>
             <p style="margin-bottom: 15px; color: #666;">
-                Здесь отображаются последние запросы отмененных рейсов. Используйте фильтр, чтобы увидеть все запросы или только те, где были найдены отмененные рейсы.
+                Здесь отображаются последние запросы рейсов. Используйте фильтр, чтобы увидеть все запросы или только те, где были найдены рейсы.
             </p>
 
             <div style="display: flex; gap: 10px; margin-bottom: 15px;">
@@ -666,7 +718,7 @@
 
             <div v-else>
                 <div v-if="searchHistory.length === 0" style="padding: 20px; background: #f8f9fa; border-radius: 8px; color: #666;">
-                    История пока пуста. Выполните поиск отмененных рейсов, чтобы запись появилась в списке.
+                    История пока пуста. Выполните поиск рейсов, чтобы запись появилась в списке.
                 </div>
 
                 <div v-else style="overflow-x: auto;">
@@ -676,7 +728,7 @@
                                 <th style="padding: 10px; border-bottom: 1px solid #ddd;">Когда</th>
                                 <th style="padding: 10px; border-bottom: 1px solid #ddd;">Маршрут</th>
                                 <th style="padding: 10px; border-bottom: 1px solid #ddd;">Дата рейса</th>
-                                <th style="padding: 10px; border-bottom: 1px solid #ddd; text-align: center;">Найдено отмененных</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #ddd; text-align: center;">Найдено рейсов</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -722,7 +774,7 @@
                         to: '',
                         date: new Date().toISOString().split('T')[0]
                     },
-                    races: [], // Отмененные рейсы из API
+                    races: [], // Рейсы из API (активные и отмененные)
                     selectedRaces: [], // Выбранные ID рейсов
                     searchPerformed: false,
                     searching: false,
@@ -769,6 +821,12 @@
                 }
             },
             computed: {
+                cancelledCount() {
+                    return this.races.filter(race => race.active === false).length;
+                },
+                activeCount() {
+                    return this.races.filter(race => race.active !== false).length;
+                },
                 passengersWithEmail() {
                     return this.passengers.filter(p => p.email).length;
                 },
@@ -1040,7 +1098,7 @@
                         this.showModal({
                             type: 'warning',
                             title: 'Нужно заполнить все поля',
-                            message: 'Пожалуйста, выберите станцию отправления, станцию прибытия и дату перед поиском отмененных рейсов.'
+                            message: 'Пожалуйста, выберите станцию отправления, станцию прибытия и дату перед поиском рейсов.'
                         });
                         return;
                     }
@@ -1057,9 +1115,9 @@
                         const date = new Date(this.searchForm.date);
                         const formattedDate = date.toISOString().split('T')[0];
                         
-                        // GET запрос: /races?from={id_from}&to={id_to}&date={DD.MM.YY}
-                        // Но API принимает date в формате Y-m-d, а затем конвертирует в DD.MM.YY
-                        response = await fetch(`/api/races?from=${this.searchForm.from}&to=${this.searchForm.to}&date=${formattedDate}`, {
+                        // GET запрос: /races/all?from={id_from}&to={id_to}&date={Y-m-d}
+                        // API возвращает все рейсы (активные и отмененные)
+                        response = await fetch(`/api/races/all?from=${this.searchForm.from}&to=${this.searchForm.to}&date=${formattedDate}`, {
                             headers: {
                                 'Accept': 'application/json',
                                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
@@ -1089,39 +1147,31 @@
                             const racesData = Array.isArray(data.data) ? data.data : [];
                             
                             if (racesData.length === 0) {
-                                // Если массив пустой, это нормально - просто нет отмененных рейсов
+                                // Если массив пустой, это нормально - просто нет рейсов
                                 this.races = [];
                                 this.searchPerformed = true;
                                 return; // Выходим, не показывая ошибку
                             }
                             
-                            // API уже возвращает только отмененные рейсы (active = false)
-                            // Но для надежности дополнительно фильтруем на фронтенде
+                            // Фильтруем только по наличию обязательных полей и инициализируем статус
                             this.races = racesData.filter(race => {
-                                // Проверяем, что рейс отменен (active = false)
-                                // Также проверяем наличие обязательных полей
-                                return race.active === false && 
-                                       race.id && 
-                                       (race.dt_depart || race.dt_arrive);
+                                return race.id && (race.dt_depart || race.dt_arrive);
+                            }).map(race => ({
+                                ...race,
+                                status: race.status || (race.active === false ? 'cancelled' : 'scheduled') // Инициализация статуса
+                            }));
+                            
+                            // Сортируем: сначала отмененные (active = false), потом активные (active = true)
+                            this.races.sort((a, b) => {
+                                if (a.active === false && b.active !== false) return -1;
+                                if (a.active !== false && b.active === false) return 1;
+                                return 0;
                             });
                             
-                            if (this.races.length === 0) {
-                                // Если после фильтрации ничего не осталось
-                                if (racesData.length > 0) {
-                                    console.warn('Найдены рейсы, но ни один не соответствует критериям отмененных (active = false)');
-                                    // Показываем информационное сообщение
-                                    const nonCancelledCount = racesData.length;
-                                    console.log(`Найдено рейсов: ${nonCancelledCount}, но все они активны (active = true)`);
-                                }
-                                // Не показываем alert, так как это не ошибка - просто нет отмененных рейсов
-                            } else {
-                                console.log(`Найдено отмененных рейсов: ${this.races.length}`);
-                                
-                                // Проверяем, что все рейсы действительно отменены
-                                const allCancelled = this.races.every(race => race.active === false);
-                                if (!allCancelled) {
-                                    console.warn('Внимание: некоторые рейсы в списке не отменены (active !== false)');
-                                }
+                            if (this.races.length > 0) {
+                                const cancelledCount = this.races.filter(race => race.active === false).length;
+                                const activeCount = this.races.filter(race => race.active !== false).length;
+                                console.log(`Найдено рейсов: ${this.races.length} (отмененных: ${cancelledCount}, активных: ${activeCount})`);
                             }
                         } else {
                             // Если success = false, но нет ошибки в response.ok
@@ -1237,7 +1287,7 @@
                         this.showModal({
                             type: 'warning',
                             title: 'Нет активной задачи',
-                            message: 'Сначала создайте задачу, чтобы добавить в неё отмененные рейсы.'
+                            message: 'Сначала создайте задачу, чтобы добавить в неё рейсы.'
                         });
                         return;
                     }
@@ -1246,7 +1296,7 @@
                         this.showModal({
                             type: 'warning',
                             title: 'Нет выбранных рейсов',
-                            message: 'Выберите хотя бы один отмененный рейс, чтобы добавить его в задачу.'
+                            message: 'Выберите хотя бы один рейс, чтобы добавить его в задачу.'
                         });
                         return;
                     }
@@ -1314,7 +1364,7 @@
                             this.showModal({
                                 type: 'warning',
                                 title: 'Нет рейсов в задаче',
-                                message: 'Добавьте отмененные рейсы в задачу, прежде чем загружать пассажиров.'
+                                message: 'Добавьте рейсы в задачу, прежде чем загружать пассажиров.'
                             });
                         }
                         return;
@@ -1637,6 +1687,31 @@
                         console.error('Error updating stats:', error);
                         // Не показываем alert для статистики, так как это не критично
                     }
+                },
+                updateRaceStatus(race) {
+                    // Обновляем статус в локальном массиве races
+                    const raceIndex = this.races.findIndex(r => r.id === race.id);
+                    if (raceIndex !== -1) {
+                        this.races[raceIndex].status = race.status;
+                    }
+                },
+                getStatusLabel(status) {
+                    const labels = {
+                        'scheduled': 'Запланирован',
+                        'cancelled': 'Отменен',
+                        'delayed': 'Задержан',
+                        'completed': 'Завершен'
+                    };
+                    return labels[status] || status;
+                },
+                getStatusBadgeClass(status) {
+                    const classes = {
+                        'scheduled': 'badge badge-success',
+                        'cancelled': 'badge badge-danger',
+                        'delayed': 'badge badge-warning',
+                        'completed': 'badge badge-success'
+                    };
+                    return classes[status] || 'badge';
                 }
             }
         }).mount('#app');

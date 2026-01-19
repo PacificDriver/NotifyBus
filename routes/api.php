@@ -30,6 +30,7 @@ Route::middleware(['auth:web'])->group(function () {
     Route::prefix('trips')->group(function () {
         Route::get('/cancelled', 'App\Http\Controllers\Api\TripController@getCancelled'); // GET /api/trips/cancelled?from={id}&to={id}&date={Y-m-d}
         Route::get('/{id}', 'App\Http\Controllers\Api\TripController@show');
+        Route::put('/{id}/status', 'App\Http\Controllers\Api\TripController@updateStatus'); // PUT /api/trips/{id}/status
     });
     
     // Рейсы из API перевозчика (альтернативный endpoint)
@@ -84,6 +85,7 @@ Route::middleware(['auth:web'])->group(function () {
         Route::post('/test/whatsapp/send', 'App\Http\Controllers\Api\SettingsController@testSendWhatsApp');
         Route::post('/test/email', 'App\Http\Controllers\Api\SettingsController@testEmail');
         Route::post('/test/carrier-api', 'App\Http\Controllers\Api\SettingsController@testCarrierApi');
+        Route::post('/test/startport-api', 'App\Http\Controllers\Api\SettingsController@testStartportApi');
     });
 
     Route::middleware('role:admin')->prefix('import/mysql')->group(function () {

@@ -125,6 +125,11 @@ class Trip extends Model
             ->withTimestamps();
     }
 
+    public function statusChanges()
+    {
+        return $this->hasMany(TripStatusChange::class);
+    }
+
     // Scopes
     public function scopeCancelled($query)
     {
@@ -164,6 +169,34 @@ class Trip extends Model
     public function isDelayed(): bool
     {
         return $this->status === 'delayed';
+    }
+
+    /**
+     * Изменить статус рейса с сохранением истории изменений
+     * 
+     * @param string $newStatus Новый статус
+     * @param string|null $reason Причина изменения
+     * @param mixed $newDepartureAt Новое время отправления (при задержке)
+     * @param int|null $changedBy ID пользователя, изменившего статус
+     * @return void
+     */
+    public function changeStatus(string $newStatus, ?string $reason = null, $newDepartureAt = null, ?int $changedBy = null): void
+    {
+        $oldStatus = $this->status;
+        
+        // Создаем запись в истории изменений
+        TripStatusChange::create([
+            'trip_id' => $this->id,
+            'old_status' => $oldStatus,
+            'new_status' => $newStatus,
+            'reason' => $reason,
+            'new_departure_at' => $newDepartureAt,
+            'changed_by' => $changedBy ?? auth()->id(),
+            'changed_at' => now(),
+        ]);
+        
+        // Обновляем статус рейса
+        $this->update(['status' => $newStatus]);
     }
 }
 

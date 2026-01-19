@@ -632,13 +632,22 @@
 
                 <div class="setting-item">
                     <small>Импорт данных</small>
-                    <h3>⬇️ Импорт пассажиров</h3>
-                    <p>Управление частотой импорта, выбор таблицы источника и просмотр инструкции по запуску процесса.</p>
+                    <h3>⬇️ Импорт пассажиров (pb_order_item)</h3>
+                    <p>Управление частотой импорта из старой базы pb_order_item, выбор таблицы источника и просмотр инструкции по запуску процесса.</p>
                     <div class="setting-actions">
                         <a href="/admin/settings#importer" class="btn btn-primary" style="text-decoration: none;">Настроить импорт</a>
                         <button class="btn btn-secondary" onclick="showModal({ type: 'info', title: 'Импорт пассажиров', message: 'Перейдите в настройки → вкладка «Импорт», чтобы изменить таблицу источника и интервал запуска. Процесс запускается из блока «Управление процессами».' })">
                             Памятка
                         </button>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <small>Импорт данных</small>
+                    <h3>🎫 Startport API (новый сайт)</h3>
+                    <p>Настройка загрузки пассажиров с нового сайта startport.ru. Пассажиры загружаются при нажатии кнопки "Обновить список".</p>
+                    <div class="setting-actions">
+                        <a href="/admin/settings#startport" class="btn btn-primary" style="text-decoration: none;">Настроить Startport</a>
                     </div>
                 </div>
 
@@ -689,6 +698,10 @@
                 <div style="margin-bottom: 15px;" id="carrier-status">
                     <span class="status-indicator status-error"></span>
                     <strong>API Перевозчика:</strong> Проверка...
+                </div>
+                <div style="margin-bottom: 15px;" id="startport-status">
+                    <span class="status-indicator status-error"></span>
+                    <strong>Startport API:</strong> Проверка...
                 </div>
             </div>
         </div>
@@ -788,6 +801,15 @@
                                 carrierStatus.innerHTML = '<span class="status-indicator status-error"></span><strong>API Перевозчика:</strong> Не настроен (требуется конфигурация)';
                             }
                         }
+                        
+                        const startportStatus = document.getElementById('startport-status');
+                        if (startportStatus) {
+                            if (data.data && data.data.startport && data.data.startport.configured) {
+                                startportStatus.innerHTML = '<span class="status-indicator status-ok"></span><strong>Startport API:</strong> Настроен';
+                            } else {
+                                startportStatus.innerHTML = '<span class="status-indicator status-error"></span><strong>Startport API:</strong> Не настроен (требуется конфигурация)';
+                            }
+                        }
                     } else {
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
@@ -795,11 +817,15 @@
                     console.error('Error checking services status:', error);
                     const whatsappStatus = document.getElementById('whatsapp-status');
                     const carrierStatus = document.getElementById('carrier-status');
+                    const startportStatus = document.getElementById('startport-status');
                     if (whatsappStatus) {
                         whatsappStatus.innerHTML = '<span class="status-indicator status-error"></span><strong>WhatsApp API:</strong> Сервис недоступен. Обратитесь к администратору.';
                     }
                     if (carrierStatus) {
                         carrierStatus.innerHTML = '<span class="status-indicator status-error"></span><strong>API Перевозчика:</strong> Сервис недоступен. Обратитесь к администратору.';
+                    }
+                    if (startportStatus) {
+                        startportStatus.innerHTML = '<span class="status-indicator status-error"></span><strong>Startport API:</strong> Сервис недоступен. Обратитесь к администратору.';
                     }
                 }
             }
