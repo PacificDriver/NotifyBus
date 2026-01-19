@@ -468,9 +468,17 @@
                         <div style="flex: 1;">
                             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                                 <strong>Рейс ID: @{{ race.id }}</strong>
+                                <span v-if="race.route || race.trip_number" style="color: #666; font-weight: normal;">
+                                    (№@{{ race.route || race.trip_number }})
+                                </span>
                                 <span :class="race.active === false ? 'badge badge-danger' : 'badge badge-success'" style="font-size: 0.75rem; padding: 2px 8px;">
                                     @{{ race.active === false ? '❌ Отменен' : '✅ Активен' }}
                                 </span>
+                            </div>
+                            <div style="margin-bottom: 8px; padding: 8px; background: #f8f9fa; border-radius: 6px;">
+                                <div style="font-size: 0.95rem; font-weight: 600; color: #495057;">
+                                    🚌 Рейс №@{{ race.route || race.trip_number || race.id }}: @{{ fromStationName }} → @{{ toStationName }}
+                                </div>
                             </div>
                             <div style="margin-top: 8px; font-size: 0.9rem; color: #666;">
                                 <div v-if="race.dt_depart" style="margin-bottom: 4px;">
@@ -776,6 +784,8 @@
                     },
                     races: [], // Рейсы из API (активные и отмененные)
                     selectedRaces: [], // Выбранные ID рейсов
+                    fromStationName: '', // Название станции отправления
+                    toStationName: '', // Название станции прибытия
                     searchPerformed: false,
                     searching: false,
                     currentTask: null,
@@ -1145,6 +1155,10 @@
                         if (data.success) {
                             // Проверяем, что data.data существует и является массивом
                             const racesData = Array.isArray(data.data) ? data.data : [];
+                            
+                            // Сохраняем названия станций из ответа API
+                            this.fromStationName = data.from_station?.name || '';
+                            this.toStationName = data.to_station?.name || '';
                             
                             if (racesData.length === 0) {
                                 // Если массив пустой, это нормально - просто нет рейсов
