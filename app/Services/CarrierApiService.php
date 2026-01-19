@@ -713,10 +713,10 @@ class CarrierApiService
             'date' => $date,
             'formatted_date' => $formattedDate,
         ]);
-        
+
         $races = $this->makeRequest('GET', '/races', [
-            'from' => $fromStationId,
-            'to' => $toStationId,
+            'from_station' => $fromStationId,
+            'to_station' => $toStationId,
             'date' => $formattedDate,
         ]);
 
@@ -753,13 +753,13 @@ class CarrierApiService
 
     /**
      * Получить информацию о конкретном рейсе
-     * API: GET /races/{id}?from={id}&to={id}
+     * API: GET /races/{id}?from_station={id}&to_station={id}
      */
     public function getRace(int $raceId, int $fromStationId, int $toStationId): array
     {
         return $this->makeRequest('GET', "/races/{$raceId}", [
-            'from' => $fromStationId,
-            'to' => $toStationId,
+            'from_station' => $fromStationId,
+            'to_station' => $toStationId,
         ]);
     }
 

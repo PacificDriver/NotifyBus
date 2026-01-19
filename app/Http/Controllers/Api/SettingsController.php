@@ -23,6 +23,7 @@ class SettingsController extends Controller
             'data' => [
                 'whatsapp' => $this->checkWhatsAppStatus(),
                 'carrier_api' => $this->checkCarrierApiStatus(),
+                'startport' => $this->checkStartportStatus(),
                 'email' => $this->checkEmailStatus(),
             ],
         ]);
@@ -52,6 +53,22 @@ class SettingsController extends Controller
         // Берем ТОЛЬКО из БД, без fallback на config/env
         $apiKey = $this->getSettingValue('carrier_api', 'key');
         $apiUrl = $this->getSettingValue('carrier_api', 'url');
+        
+        $isConfigured = !empty($apiKey) && !empty($apiUrl);
+        
+        return [
+            'configured' => $isConfigured,
+            'message' => $isConfigured ? 'Настроен' : 'Не настроен (требуется конфигурация в админ-панели)',
+        ];
+    }
+
+    /**
+     * Проверить статус Startport API
+     */
+    protected function checkStartportStatus(): array
+    {
+        $apiKey = $this->getSettingValue('startport', 'api_key');
+        $apiUrl = $this->getSettingValue('startport', 'url');
         
         $isConfigured = !empty($apiKey) && !empty($apiUrl);
         
@@ -150,7 +167,7 @@ class SettingsController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'group' => 'required|string|in:whatsapp,email,carrier_api,external_db,notification,importer,mysql_bridge',
+            'group' => 'required|string|in:whatsapp,email,carrier_api,startport,external_db,notification,importer,mysql_bridge',
             'settings' => 'required|array',
         ]);
 
@@ -177,6 +194,11 @@ class SettingsController extends Controller
                 // Пропускаем пустые значения
                 if ($value === '' || $value === null) {
                     continue;
+                }
+                
+                // Автоматически преобразуем HTTP в HTTPS для startport.ru URL
+                if ($group === 'startport' && $key === 'url' && str_starts_with($value, 'http://startport.ru')) {
+                    $value = str_replace('http://', 'https://', $value);
                 }
                 
                     // Если значение уже замаскировано (начинается с ***), не меняем
@@ -853,6 +875,126 @@ class SettingsController extends Controller
     }
 
     /**
+     * Проверить подключение к Startport API
+     */
+    public function testStartportApi(Request $request)
+    {
+        try {
+            $settings = $request->input('settings', []);
+            
+            // Получаем URL и ключ из запроса
+            $testUrl = $settings['url'] ?? '';
+            $testKey = $settings['api_key'] ?? '';
+            
+            // Если ключ замаскирован или пустой, берём реальное значение из БД
+            if (empty($testKey) || str_starts_with($testKey, '***') || str_starts_with($testKey, 'tok***')) {
+                $testKey = $this->getSettingValue('startport', 'api_key');
+            }
+            
+            // Если URL пустой, берём из БД
+            if (empty($testUrl)) {
+                $testUrl = $this->getSettingValue('startport', 'url');
+            }
+            
+            // Автоматически преобразуем HTTP в HTTPS для startport.ru
+            if ($testUrl && str_starts_with($testUrl, 'http://startport.ru')) {
+                $testUrl = str_replace('http://', 'https://', $testUrl);
+            }
+            
+            // Проверяем, что есть URL и ключ
+            if (empty($testUrl) || empty($testKey)) {
+                throw new \Exception('URL API и ключ доступа обязательны для проверки подключения. Пожалуйста, настройте их в разделе "Startport" выше.');
+            }
+            
+            Log::info('Testing Startport API connection', [
+                'test_url' => $testUrl,
+                'key_present' => !empty($testKey),
+                'key_length' => strlen($testKey),
+            ]);
+            
+            // Выполняем тестовый запрос - попробуем загрузить пассажиров для тестового рейса
+            // Используем ID рейса = 1 для теста (или любой другой известный ID)
+            $testRaceId = 1; // Можно потом сделать настраиваемым
+            
+            $response = \Illuminate\Support\Facades\Http::timeout(30)
+                ->connectTimeout(10)
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . $testKey,
+                    'Accept' => 'application/json',
+                    'Content-Type' => 'application/json',
+                ])
+                ->get(rtrim($testUrl, '/') . '/api/passengers/race/' . $testRaceId);
+            
+            Log::info('Startport API test response', [
+                'status' => $response->status(),
+                'successful' => $response->successful(),
+            ]);
+            
+            if (!$response->successful()) {
+                $errorMsg = 'Ошибка подключения к Startport API. ';
+                
+                if ($response->status() === 401 || $response->status() === 403) {
+                    $errorMsg .= 'Неверный ключ доступа (API Key).';
+                } elseif ($response->status() === 404) {
+                    // 404 может означать что рейс не найден, но API работает
+                    $errorMsg = 'API доступен, но тестовый рейс (ID=' . $testRaceId . ') не найден. Это нормально, если в базе нет этого рейса.';
+                    
+                    // Пробуем другой endpoint для более точной проверки
+                    // Можно попробовать любой другой публичный endpoint
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Подключение к Startport API работает! ' . $errorMsg,
+                    ]);
+                } elseif ($response->status() >= 500) {
+                    $errorMsg .= 'Сервер API недоступен или вернул ошибку.';
+                } else {
+                    $errorMsg .= 'HTTP ' . $response->status() . ': ' . substr($response->body(), 0, 200);
+                }
+                
+                throw new \Exception($errorMsg);
+            }
+            
+            $responseData = $response->json();
+            
+            // Проверяем структуру ответа
+            $passengersData = $responseData['data'] ?? [];
+            $passengersCount = is_array($passengersData) ? count($passengersData) : 0;
+            
+            Log::info('Startport API test successful', [
+                'passengers_count' => $passengersCount,
+                'response_type' => gettype($responseData),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Подключение к Startport API успешно! Получено пассажиров для тестового рейса: ' . $passengersCount,
+                'passengers_count' => $passengersCount,
+            ]);
+
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('Startport API connection failed', [
+                'error' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Не удалось подключиться к серверу API. Проверьте правильность URL и доступность сервера.',
+            ], 400);
+            
+        } catch (\Exception $e) {
+            Log::error('Startport API test failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
      * Получить список ключей, которые являются секретными (токены, пароли)
      */
     protected function getEncryptedKeys(string $group): array
@@ -861,6 +1003,7 @@ class SettingsController extends Controller
             'whatsapp' => ['api_token', 'webhook_secret'],
             'email' => ['password'],
             'carrier_api' => ['key'],
+            'startport' => ['api_key'],
             'external_db' => ['password'],
             'mysql_bridge' => ['password'],
             default => [],

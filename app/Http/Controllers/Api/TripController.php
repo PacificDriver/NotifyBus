@@ -277,6 +277,52 @@ class TripController extends Controller
         ]);
     }
 
+    /**
+     * Обновить статус рейса
+     * PUT /api/trips/{id}/status
+     */
+    public function updateStatus(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'status' => 'required|in:scheduled,cancelled,delayed,completed',
+            'reason' => 'nullable|string|max:255',
+            'new_departure_at' => 'nullable|date',
+        ]);
+
+        try {
+            $trip = Trip::findOrFail($id);
+
+            // Используем метод changeStatus для сохранения истории
+            $trip->changeStatus(
+                $validated['status'],
+                $validated['reason'] ?? null,
+                $validated['new_departure_at'] ?? null,
+                auth()->id()
+            );
+
+            // Загружаем обновленные данные с историей изменений
+            $trip->load('statusChanges.changedBy');
+
+            return response()->json([
+                'success' => true,
+                'data' => $trip,
+                'message' => 'Статус рейса успешно обновлен',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to update trip status", [
+                'trip_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Ошибка при обновлении статуса рейса: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
     protected function logSearchHistory(Request $request, Station $fromStation, Station $toStation, array $races): void
     {
         try {

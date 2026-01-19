@@ -508,6 +508,7 @@
                     <button class="tab active" data-tab-target="whatsapp" onclick="switchTab('whatsapp', this)">📱 WhatsApp</button>
                     <button class="tab" data-tab-target="email" onclick="switchTab('email', this)">✉️ Email</button>
                     <button class="tab" data-tab-target="carrier" onclick="switchTab('carrier', this)">🚌 API Перевозчика</button>
+                    <button class="tab" data-tab-target="startport" onclick="switchTab('startport', this)">🎫 Startport</button>
                     <button class="tab" data-tab-target="notification" onclick="switchTab('notification', this)">🔔 Уведомления</button>
                     <button class="tab" data-tab-target="mysql_bridge" onclick="switchTab('mysql_bridge', this)">🗄 MySQL</button>
                     <button class="tab" data-tab-target="templates" onclick="switchTab('templates', this)">📝 Шаблоны</button>
@@ -671,6 +672,40 @@
                     </div>
                     
                     <div id="sync-stations-result" style="margin-top: 15px;"></div>
+                </form>
+            </div>
+
+            <!-- Startport Settings -->
+            <div id="startport-tab" class="tab-content">
+                <h2>Настройки Startport API</h2>
+                <p style="color:#666; margin-bottom:15px;">
+                    Настройте подключение к API сайта startport.ru для загрузки пассажиров.
+                    При создании уведомления пассажиры будут загружаться из этого источника дополнительно к базе pb_order_item.
+                </p>
+                <form id="startport-form">
+                    <div class="form-group">
+                        <label for="startport_url">URL API</label>
+                        <input type="text" id="startport_url" name="url" placeholder="https://startport.ru" required>
+                        <small>Базовый URL API startport.ru (используйте HTTPS)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="startport_api_key">API Key</label>
+                        <input type="password" id="startport_api_key" name="api_key" placeholder="Ваш API ключ">
+                        <small>Ключ доступа для API startport.ru</small>
+                    </div>
+
+                    <div class="alert alert-info" style="margin-bottom: 20px;">
+                        <strong>💡 Информация:</strong><br>
+                        • Endpoint для загрузки пассажиров: <code>/api/passengers/race/{route_id}</code><br>
+                        • Пассажиры загружаются автоматически при нажатии кнопки "↻ Обновить список пассажиров"<br>
+                        • Данные загружаются параллельно из старой базы (pb_order_item) и нового API startport.ru
+                    </div>
+
+                    <div class="btn-group">
+                        <button type="submit" class="btn btn-primary">💾 Сохранить настройки</button>
+                        <button type="button" class="btn btn-success" onclick="testStartportApi()">🔍 Проверить подключение</button>
+                    </div>
                 </form>
             </div>
 
@@ -947,7 +982,7 @@
             initialized: false,
             lastStatus: null,
         };
-        const AVAILABLE_TABS = ['whatsapp', 'email', 'carrier', 'notification', 'importer', 'mysql_bridge', 'templates', 'search_history', 'operators'];
+        const AVAILABLE_TABS = ['whatsapp', 'email', 'carrier', 'startport', 'notification', 'importer', 'mysql_bridge', 'templates', 'search_history', 'operators'];
         const DEFAULT_TAB = 'whatsapp';
 
         const modalElements = {
@@ -1098,6 +1133,7 @@
                     fillForm('whatsapp', data.data.whatsapp || {});
                     fillForm('email', data.data.email || {});
                     fillForm('carrier_api', data.data.carrier_api || {});
+                    fillForm('startport', data.data.startport || {});
                     fillForm('notification', data.data.notification || {});
                         const importerSettings = data.data.importer || {};
                         if (!('interval_seconds' in importerSettings)) {
@@ -1233,6 +1269,11 @@
         document.getElementById('carrier-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             await saveSettings('carrier_api', new FormData(e.target));
+        });
+
+        document.getElementById('startport-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await saveSettings('startport', new FormData(e.target));
         });
 
         document.getElementById('notification-form').addEventListener('submit', async (e) => {
@@ -1823,6 +1864,55 @@
             } catch (error) {
                 console.error('Error testing Carrier API:', error);
                 showAlert('⚠️ Ошибка подключения к API Перевозчика:\n\n' + error.message + '\n\nПроверьте консоль браузера для деталей.', 'error');
+            }
+        }
+
+        async function testStartportApi() {
+            const form = document.getElementById('startport-form');
+            const formData = new FormData(form);
+            const settings = {};
+            formData.forEach((value, key) => {
+                settings[key] = value;
+            });
+
+            console.log('Testing Startport API connection with settings:', settings);
+            showAlert('Проверка подключения...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/settings/test/startport-api`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ settings }),
+                });
+
+                console.log('Response status:', response.status);
+                
+                const data = await response.json();
+                console.log('Response data:', data);
+
+                if (!response.ok) {
+                    if (response.status === 403) {
+                        throw new Error('Доступ запрещён. Требуется роль администратора.');
+                    } else if (response.status === 401) {
+                        throw new Error('Не авторизован. Пожалуйста, войдите в систему.');
+                    }
+                    throw new Error(data.message || `HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                if (data.success) {
+                    showAlert('✅ Подключение к Startport API успешно!', 'success');
+                } else {
+                    throw new Error(data.message || 'Неизвестная ошибка подключения');
+                }
+            } catch (error) {
+                console.error('Error testing Startport API:', error);
+                showAlert('⚠️ Ошибка подключения к Startport API:\n\n' + error.message + '\n\nПроверьте консоль браузера для деталей.', 'error');
             }
         }
 
