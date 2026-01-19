@@ -11,17 +11,22 @@ class EmailService
 {
     /**
      * Применить настройки email из БД перед отправкой
+     * 
+     * @param string|null $group Группа настроек email (email или startport_email)
      */
-    protected function applyEmailSettingsFromDb(): void
+    protected function applyEmailSettingsFromDb(?string $group = null): void
     {
         try {
-            $host = Setting::get('email_host');
-            $port = Setting::get('email_port');
-            $username = Setting::get('email_username');
-            $password = Setting::get('email_password');
-            $encryption = Setting::get('email_encryption');
-            $fromAddress = Setting::get('email_from_address');
-            $fromName = Setting::get('email_from_name');
+            // Если группа не указана, используем обычную группу email
+            $prefix = $group && $group !== 'email' ? "{$group}_" : 'email_';
+            
+            $host = Setting::get($prefix . 'host');
+            $port = Setting::get($prefix . 'port');
+            $username = Setting::get($prefix . 'username');
+            $password = Setting::get($prefix . 'password');
+            $encryption = Setting::get($prefix . 'encryption');
+            $fromAddress = Setting::get($prefix . 'from_address');
+            $fromName = Setting::get($prefix . 'from_name');
 
             if (!empty($host)) {
                 Config::set('mail.mailers.smtp.host', $host);
@@ -64,12 +69,18 @@ class EmailService
 
     /**
      * Отправить email
+     * 
+     * @param string $to Email получателя
+     * @param string $subject Тема письма
+     * @param string $body Текст письма
+     * @param array $metadata Метаданные для логирования
+     * @param string|null $emailGroup Группа настроек email (email или startport_email)
      */
-    public function send(string $to, string $subject, string $body, array $metadata = []): bool
+    public function send(string $to, string $subject, string $body, array $metadata = [], ?string $emailGroup = null): bool
     {
         try {
             // Применяем настройки из БД перед отправкой
-            $this->applyEmailSettingsFromDb();
+            $this->applyEmailSettingsFromDb($emailGroup);
 
             Mail::raw($body, function ($message) use ($to, $subject) {
                 $message->to($to)
@@ -123,12 +134,18 @@ class EmailService
 
     /**
      * Отправить email с HTML шаблоном
+     * 
+     * @param string $to Email получателя
+     * @param string $subject Тема письма
+     * @param string $htmlBody HTML тело письма
+     * @param array $metadata Метаданные для логирования
+     * @param string|null $emailGroup Группа настроек email (email или startport_email)
      */
-    public function sendHtml(string $to, string $subject, string $htmlBody, array $metadata = []): bool
+    public function sendHtml(string $to, string $subject, string $htmlBody, array $metadata = [], ?string $emailGroup = null): bool
     {
         try {
             // Применяем настройки из БД перед отправкой
-            $this->applyEmailSettingsFromDb();
+            $this->applyEmailSettingsFromDb($emailGroup);
 
             Mail::send([], [], function ($message) use ($to, $subject, $htmlBody) {
                 $message->to($to)

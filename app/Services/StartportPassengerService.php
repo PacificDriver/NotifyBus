@@ -143,6 +143,7 @@ class StartportPassengerService
             'passenger_type' => $this->mapAgeCategory($passengerData['ageCategory'] ?? null),
             'ticket_purchased_at' => $this->parseDateTime($passengerData['createdAt'] ?? null),
             'external_payload' => $passengerData,
+            'data_source' => 'startport',
         ];
     }
 

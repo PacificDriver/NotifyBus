@@ -715,6 +715,9 @@ class NotificationTaskController extends Controller
                             'subject' => $subject,
                             'message' => $message,
                             'status' => 'pending',
+                            'metadata' => [
+                                'email_group' => $passenger->getEmailGroup(),
+                            ],
                         ]);
 
                         SendNotificationJob::dispatch($notification)
