@@ -1167,8 +1167,27 @@
                                 return; // Выходим, не показывая ошибку
                             }
                             
+                            // Дедуплицируем рейсы по id_route
+                            // Если есть рейс с to_id равным выбранной станции, выбираем его, иначе первый
+                            const racesMap = new Map();
+                            const selectedToId = String(this.searchForm.to || '');
+                            
+                            racesData.forEach(race => {
+                                const routeId = String(race.id_route || race.id || '');
+                                if (!racesMap.has(routeId)) {
+                                    racesMap.set(routeId, race);
+                                } else {
+                                    // Если текущий рейс соответствует выбранной станции прибытия, заменяем
+                                    const currentToId = String(race.to_id || '');
+                                    if (currentToId === selectedToId) {
+                                        racesMap.set(routeId, race);
+                                    }
+                                }
+                            });
+                            const uniqueRaces = Array.from(racesMap.values());
+                            
                             // Фильтруем только по наличию обязательных полей и инициализируем статус
-                            this.races = racesData.filter(race => {
+                            this.races = uniqueRaces.filter(race => {
                                 return race.id && (race.dt_depart || race.dt_arrive);
                             }).map(race => ({
                                 ...race,
