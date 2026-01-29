@@ -35,6 +35,39 @@ class PassengerController extends Controller
     }
 
     /**
+     * Получить пассажиров по external_id рейса из локальной БД
+     * GET /api/passengers/by-race/{externalRaceId}
+     */
+    public function getByRace(string $externalRaceId): JsonResponse
+    {
+        try {
+            // Получаем пассажиров по external_race_id
+            $passengers = Passenger::where('external_race_id', $externalRaceId)
+                ->with('trip.route.departureStation', 'trip.route.arrivalStation')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $passengers->values(),
+                'total_count' => $passengers->count(),
+                'external_race_id' => $externalRaceId,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to get passengers by race", [
+                'external_race_id' => $externalRaceId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get passengers: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Получить пассажиров по рейсам из локальной БД
      * POST /api/passengers/load-by-races
      * Body: { "race_ids": ["race_id_1", "race_id_2", ...] }

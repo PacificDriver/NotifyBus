@@ -11,7 +11,6 @@ use App\Models\Passenger;
 use App\Models\Route;
 use App\Models\Station;
 use App\Models\Trip;
-use App\Services\StartportPassengerService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -323,91 +322,13 @@ class NotificationTaskController extends Controller
                 'trip_ids' => $tripIds,
             ]);
 
-            // Загружаем пассажиров из Startport API (если настроен)
-            // Пассажиры из pb_order_item уже должны быть загружены фоновым процессом импорта
-            $startportService = app(StartportPassengerService::class);
-            $startportPassengersCount = 0;
-
-            if ($startportService->isEnabled()) {
-                Log::info("Startport API is enabled, loading passengers from Startport", [
-                    'task_id' => $id,
-                    'race_ids' => $raceIds,
-                ]);
-
-                foreach ($trips as $trip) {
-                    try {
-                        $startportPassengers = $startportService->getPassengersByRoute($trip->external_id);
-                        
-                        Log::info("Loaded passengers from Startport for trip", [
-                            'trip_id' => $trip->id,
-                            'external_id' => $trip->external_id,
-                            'passengers_count' => count($startportPassengers),
-                        ]);
-
-                        // Сохраняем пассажиров в базу данных
-                        foreach ($startportPassengers as $passengerData) {
-                            try {
-                                $normalizedData = $startportService->normalizePassengerData(
-                                    $passengerData,
-                                    $trip->id,
-                                    $trip->external_id
-                                );
-
-                                // Используем documentId + ticketId как уникальный идентификатор
-                                $uniqueAttributes = [
-                                    'external_race_id' => $normalizedData['external_race_id'],
-                                    'ticket_uid' => $normalizedData['ticket_uid'],
-                                ];
-
-                                // Фильтруем null значения для обновления
-                                $updateData = array_filter($normalizedData, fn($value) => $value !== null);
-                                $updateData['trip_id'] = $trip->id; // Всегда обновляем trip_id
-
-                                $passenger = Passenger::updateOrCreate($uniqueAttributes, $updateData);
-                                $startportPassengersCount++;
-
-                                Log::debug("Saved passenger from Startport", [
-                                    'passenger_id' => $passenger->id,
-                                    'trip_id' => $trip->id,
-                                    'document_id' => $passengerData['documentId'] ?? null,
-                                ]);
-
-                            } catch (\Exception $e) {
-                                Log::error("Failed to save passenger from Startport", [
-                                    'trip_id' => $trip->id,
-                                    'passenger_data' => $passengerData,
-                                    'error' => $e->getMessage(),
-                                ]);
-                            }
-                        }
-
-                    } catch (\Exception $e) {
-                        Log::warning("Failed to load passengers from Startport for trip", [
-                            'trip_id' => $trip->id,
-                            'external_id' => $trip->external_id,
-                            'error' => $e->getMessage(),
-                        ]);
-                    }
-                }
-
-                Log::info("Loaded passengers from Startport", [
-                    'task_id' => $id,
-                    'passengers_count' => $startportPassengersCount,
-                ]);
-            } else {
-                Log::info("Startport API is not enabled, skipping", [
-                    'task_id' => $id,
-                ]);
-            }
-
             // Получаем всех пассажиров из базы данных
-            // (уже загруженных из pb_order_item фоновым процессом + только что загруженных из Startport)
+            // Пассажиры из pb_order_item и Startport уже должны быть загружены фоновым процессом импорта
             $passengers = Passenger::whereIn('trip_id', $tripIds)->get();
 
             Log::info("Found passengers", [
                 'task_id' => $id,
                 'passengers_count' => $passengers->count(),
-                'from_startport' => $startportPassengersCount,
                 'passenger_ids' => $passengers->pluck('id')->take(10)->toArray(), // Первые 10 для примера
             ]);
 
@@ -425,7 +346,6 @@ class NotificationTaskController extends Controller
                         'saved_count' => 0,
                         'valid_passengers_count' => 0,
                         'trip_ids' => $tripIds,
-                        'startport_loaded' => $startportPassengersCount,
                     ],
                 ]);
             }
@@ -447,7 +367,6 @@ class NotificationTaskController extends Controller
                     'saved_count' => $passengers->count(),
                     'valid_passengers_count' => $validPassengersCount,
                     'trip_ids' => $tripIds,
-                    'startport_loaded' => $startportPassengersCount,
                 ],
             ]);
         } catch (\Exception $e) {

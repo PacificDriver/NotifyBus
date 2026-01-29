@@ -54,12 +54,23 @@ class TripController extends Controller
             );
 
             $enrichedRaces = array_map(function ($race) use ($fromStation, $toStation) {
-                return array_merge($race, [
+                $enriched = array_merge($race, [
                     'from_station_id' => $fromStation->id,
                     'to_station_id' => $toStation->id,
-                    'from_station_name' => $race['route_start'] ?? $fromStation->name,
-                    'to_station_name' => $race['route_end'] ?? $toStation->name,
+                    'from_station_name' => $race['route_start'] ?? $race['from_name'] ?? $fromStation->name,
+                    'to_station_name' => $race['route_end'] ?? $race['to_name'] ?? $toStation->name,
                 ]);
+
+                // Определяем систему из поля provider
+                if (isset($race['provider'])) {
+                    $enriched['system'] = $race['provider'];
+                }
+
+                // Количество мест и проданных билетов из API
+                $enriched['total_seats'] = $race['sits_count'] ?? null;
+                $enriched['sold_tickets'] = $race['tkt_count'] ?? null;
+
+                return $enriched;
             }, $races);
 
             return response()->json([
@@ -275,6 +286,55 @@ class TripController extends Controller
             'success' => true,
             'data' => $trip,
         ]);
+    }
+
+    /**
+     * Получить информацию о рейсе по external_id
+     * GET /api/races/{externalId}
+     */
+    public function getByExternalId(string $externalId): JsonResponse
+    {
+        try {
+            // Сначала пытаемся найти в локальной БД
+            $trip = Trip::where('external_id', $externalId)
+                ->with([
+                    'route.departureStation',
+                    'route.arrivalStation',
+                    'passengers',
+                    'drivers'
+                ])
+                ->first();
+
+            if ($trip) {
+                return response()->json([
+                    'success' => true,
+                    'data' => $trip,
+                    'source' => 'database',
+                ]);
+            }
+
+            // Если не найден в БД, возвращаем только external_id
+            // Данные рейса будут получены на фронтенде из списка рейсов
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'id' => $externalId,
+                    'external_id' => $externalId,
+                ],
+                'source' => 'api',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to get trip by external_id", [
+                'external_id' => $externalId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get trip: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
