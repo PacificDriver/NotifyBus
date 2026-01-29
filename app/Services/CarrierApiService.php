@@ -838,6 +838,14 @@ class CarrierApiService
         Log::warning("getRoutes() endpoint may not exist in carrier API");
         return $this->makeRequest('GET', '/routes', $filters);
     }
+
+    /**
+     * Получить URL API
+     */
+    public function getApiUrl(): ?string
+    {
+        return $this->apiUrl ?: null;
+    }
 }
 
 

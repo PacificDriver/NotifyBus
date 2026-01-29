@@ -37,6 +37,7 @@ Route::middleware(['auth:web'])->group(function () {
     Route::prefix('races')->group(function () {
         Route::get('/all', 'App\Http\Controllers\Api\TripController@getAll'); // GET /api/races/all?from={id}&to={id}&date={Y-m-d} - ВСЕ рейсы
         Route::get('/', 'App\Http\Controllers\Api\TripController@getCancelled'); // GET /api/races?from={id}&to={id}&date={Y-m-d} - только отмененные
+        Route::get('/{externalId}', 'App\Http\Controllers\Api\TripController@getByExternalId'); // GET /api/races/{externalId} - получить рейс по external_id
     });
 
     // История поиска
@@ -45,6 +46,7 @@ Route::middleware(['auth:web'])->group(function () {
     // Пассажиры
     Route::prefix('passengers')->group(function () {
         Route::get('/by-trip/{tripId}', 'App\Http\Controllers\Api\PassengerController@getByTrip');
+        Route::get('/by-race/{externalRaceId}', 'App\Http\Controllers\Api\PassengerController@getByRace');
         Route::post('/load-by-races', 'App\Http\Controllers\Api\PassengerController@loadByRaces');
     });
 
@@ -125,6 +127,13 @@ Route::middleware(['auth:web'])->group(function () {
         Route::post('/{id}/trips', 'App\Http\Controllers\Api\Admin\DriverController@assignTrip');
         Route::delete('/{id}/trips/{tripId}', 'App\Http\Controllers\Api\Admin\DriverController@unassignTrip');
         Route::get('/{id}/trips', 'App\Http\Controllers\Api\Admin\DriverController@trips');
+    });
+
+    // Ведомости рейсов (доступно админам и операторам)
+    Route::prefix('manifests')->group(function () {
+        Route::get('/{externalRouteId}', 'App\Http\Controllers\Api\ManifestController@show');
+        Route::post('/{manifestId}/check-in', 'App\Http\Controllers\Api\ManifestController@checkIn');
+        Route::get('/{manifestId}/pdf', 'App\Http\Controllers\Api\ManifestController@exportPdf');
     });
 });
 

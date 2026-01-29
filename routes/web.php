@@ -24,6 +24,16 @@ Route::middleware(['auth'])->prefix('dashboard')->group(function () {
         $driver = \App\Models\Driver::findOrFail($id);
         return view('dashboard.driver-trips', ['driver' => $driver]);
     })->name('dashboard.driver.trips');
+    
+    // Список всех рейсов
+    Route::get('/trips-list', function () {
+        return view('dashboard.trips-list');
+    })->name('dashboard.trips-list');
+    
+    // Детали рейса (ведомость)
+    Route::get('/trips/{externalId}', function ($externalId) {
+        return view('dashboard.trip-details', ['externalId' => $externalId]);
+    })->name('dashboard.trip-details');
 });
 
 // Панель администратора

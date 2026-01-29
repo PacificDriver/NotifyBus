@@ -355,6 +355,9 @@
             <a href="/" style="text-decoration: none; color: #667eea;">📱 Панель оператора</a>
         </h1>
         <div style="display: flex; align-items: center; gap: 20px;">
+            <a href="/dashboard/trips-list" style="padding: 8px 16px; background: #51cf66; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; text-decoration: none; display: inline-block;">
+                🚌 Список рейсов
+            </a>
             <a href="/dashboard/drivers" style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; text-decoration: none; display: inline-block;">
                 🚗 Водители
             </a>
@@ -381,6 +384,32 @@
                 </div>
             </div>
         </div>
+        
+        <!-- Блок быстрого доступа -->
+        <div class="card">
+            <h2>🚀 Быстрый доступ</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-top: 20px;">
+                <a href="/dashboard/trips-list" style="text-decoration: none; display: block;">
+                    <div style="padding: 20px; background: linear-gradient(135deg, #51cf66, #40c057); border-radius: 12px; color: white; transition: transform 0.3s, box-shadow 0.3s; box-shadow: 0 4px 12px rgba(81, 207, 102, 0.3);" 
+                         onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 8px 20px rgba(81, 207, 102, 0.4)'"
+                         onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(81, 207, 102, 0.3)'">
+                        <div style="font-size: 2.5rem; margin-bottom: 10px;">🚌</div>
+                        <h3 style="margin: 0 0 8px 0; font-size: 1.2rem; color: white;">Список рейсов</h3>
+                        <p style="margin: 0; font-size: 0.9rem; opacity: 0.9;">Просмотр всех рейсов с информацией о местах и проданных билетах</p>
+                    </div>
+                </a>
+                <a href="/dashboard/drivers" style="text-decoration: none; display: block;">
+                    <div style="padding: 20px; background: linear-gradient(135deg, #667eea, #5568d3); border-radius: 12px; color: white; transition: transform 0.3s, box-shadow 0.3s; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);" 
+                         onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 8px 20px rgba(102, 126, 234, 0.4)'"
+                         onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.3)'">
+                        <div style="font-size: 2.5rem; margin-bottom: 10px;">🚗</div>
+                        <h3 style="margin: 0 0 8px 0; font-size: 1.2rem; color: white;">Водители</h3>
+                        <p style="margin: 0; font-size: 0.9rem; opacity: 0.9;">Управление водителями и назначение рейсов</p>
+                    </div>
+                </a>
+            </div>
+        </div>
+        
         <!-- Шаг 1: Создание задачи на рассылку -->
         <div class="card" v-if="!currentTask">
             <h2>📨 Создать рассылку уведомлений</h2>
