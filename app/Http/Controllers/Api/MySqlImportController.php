@@ -286,5 +286,3 @@ class MySqlImportController extends Controller
         }
     }
 }
-
-
