@@ -142,6 +142,7 @@ class StartportPassengerService
             'ticket_status' => 'paid', // Предполагаем что билет оплачен, если он в списке
             'passenger_type' => $this->mapAgeCategory($passengerData['ageCategory'] ?? null),
             'ticket_purchased_at' => $this->parseDateTime($passengerData['createdAt'] ?? null),
+            'purchase_source' => $this->normalizePurchaseSource($passengerData['purchaseSource'] ?? $passengerData['PurchaseSource'] ?? null),
             'external_payload' => $passengerData,
             'data_source' => 'startport',
         ];
@@ -340,5 +341,28 @@ class StartportPassengerService
             'REFUND', 'REFUNDED' => 'refunded',
             default => 'booked',
         };
+    }
+
+    /**
+     * Нормализовать источник покупки
+     */
+    protected function normalizePurchaseSource($value): ?string
+    {
+        if (!$value) {
+            return null;
+        }
+
+        $source = strtolower(trim((string) $value));
+
+        // Маппинг значений из API startport
+        $mapping = [
+            'vk_app' => 'vk_app',
+            'website' => 'website',
+            'mobile_app' => 'mobile_app',
+            'driver' => 'driver',
+            'cashier' => 'cashier',
+        ];
+
+        return $mapping[$source] ?? $source;
     }
 }
