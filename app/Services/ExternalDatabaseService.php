@@ -293,6 +293,12 @@ class ExternalDatabaseService
                         ?? $payload['created_at']
                         ?? null
                     ),
+                    'purchase_source' => $this->normalizePurchaseSource(
+                        $payload['purchase_source']
+                        ?? $payload['PurchaseSource']
+                        ?? $payload['source']
+                        ?? null
+                    ),
                     'raw_payload' => $payload,
                 ];
             }
@@ -492,6 +498,34 @@ class ExternalDatabaseService
         }
 
         return $digits;
+    }
+
+    /**
+     * Нормализовать источник покупки
+     */
+    protected function normalizePurchaseSource($value): ?string
+    {
+        if (!$value) {
+            return null;
+        }
+
+        $source = strtolower(trim((string) $value));
+
+        // Маппинг значений из БД starport
+        $mapping = [
+            'vk_app' => 'vk_app',
+            'website' => 'website',
+            'mobile_app' => 'mobile_app',
+            'driver' => 'driver',
+            'cashier' => 'cashier',
+            'касса' => 'cashier',
+            'водитель' => 'driver',
+            'сайт' => 'website',
+            'вк' => 'vk_app',
+            'мобильное приложение' => 'mobile_app',
+        ];
+
+        return $mapping[$source] ?? $source;
     }
 
     /**

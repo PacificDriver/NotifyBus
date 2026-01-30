@@ -36,6 +36,7 @@ class Passenger extends Model
         'ticket_purchased_at',
         'external_payload',
         'data_source',
+        'purchase_source',
     ];
 
     protected function casts(): array

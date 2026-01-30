@@ -53,12 +53,58 @@ class TripController extends Controller
                 $request->input('date')
             );
 
-            $enrichedRaces = array_map(function ($race) use ($fromStation, $toStation) {
+            // Получаем external_id всех рейсов для загрузки статистики по пассажирам
+            $raceExternalIds = array_map(function ($race) {
+                return (string)($race['id'] ?? $race['id_route'] ?? '');
+            }, $races);
+            $raceExternalIds = array_filter($raceExternalIds);
+
+            // Загружаем статистику по источникам покупки для всех рейсов одним запросом
+            $purchaseStats = [];
+            if (!empty($raceExternalIds)) {
+                $stats = \App\Models\Passenger::whereIn('external_race_id', $raceExternalIds)
+                    ->whereNotNull('purchase_source')
+                    ->selectRaw('external_race_id, purchase_source, COUNT(*) as count')
+                    ->groupBy('external_race_id', 'purchase_source')
+                    ->get()
+                    ->groupBy('external_race_id');
+
+                foreach ($stats as $raceId => $sources) {
+                    $purchaseStats[$raceId] = [
+                        'website' => 0,
+                        'vk_app' => 0,
+                        'mobile_app' => 0,
+                        'driver' => 0,
+                        'cashier' => 0,
+                        'total' => 0,
+                    ];
+                    foreach ($sources as $source) {
+                        $sourceName = $source->purchase_source;
+                        if (isset($purchaseStats[$raceId][$sourceName])) {
+                            $purchaseStats[$raceId][$sourceName] = (int)$source->count;
+                        }
+                        $purchaseStats[$raceId]['total'] += (int)$source->count;
+                    }
+                }
+            }
+
+            $enrichedRaces = array_map(function ($race) use ($fromStation, $toStation, $purchaseStats) {
+                $raceExternalId = (string)($race['id'] ?? $race['id_route'] ?? '');
+                $stats = $purchaseStats[$raceExternalId] ?? [
+                    'website' => 0,
+                    'vk_app' => 0,
+                    'mobile_app' => 0,
+                    'driver' => 0,
+                    'cashier' => 0,
+                    'total' => 0,
+                ];
+
                 $enriched = array_merge($race, [
                     'from_station_id' => $fromStation->id,
                     'to_station_id' => $toStation->id,
                     'from_station_name' => $race['route_start'] ?? $race['from_name'] ?? $fromStation->name,
                     'to_station_name' => $race['route_end'] ?? $race['to_name'] ?? $toStation->name,
+                    'purchase_stats' => $stats,
                 ]);
 
                 // Определяем систему из поля provider

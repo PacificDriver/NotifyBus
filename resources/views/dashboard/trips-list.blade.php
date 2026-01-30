@@ -229,14 +229,10 @@
             margin-left: 8px;
         }
         
-        .system-rfbas {
+        .system-rfbas,
+        .system-artmark {
             background: #e3f2fd;
             color: #1976d2;
-        }
-        
-        .system-artmark {
-            background: #fff3e0;
-            color: #f57c00;
         }
         
         /* Контекстное меню */
@@ -476,7 +472,12 @@
                                 <th>Маршрут (Номер)</th>
                                 <th>Рейс (Откуда-Куда)</th>
                                 <th>Перевозчик</th>
-                                <th>Продано</th>
+                                <th>Сайт</th>
+                                <th>ВК</th>
+                                <th>Водитель</th>
+                                <th>Касса</th>
+                                <th>Итого</th>
+                                <th>Всего мест</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -496,12 +497,12 @@
                                     </span>
                                 </td>
                                 <td>@{{ trip.perevoz || trip.carrier_name || '—' }}</td>
-                                <td>
-                                    <span v-if="trip.total_seats || trip.seats">
-                                    @{{ trip.sold_tickets || trip.sold_seats || trip.passengers_count || 0 }} / @{{ trip.total_seats || trip.seats }}
-                                    </span>
-                                    <span v-else>—</span>
-                                </td>
+                                <td style="text-align: center;">@{{ getPurchaseCount(trip, 'website') }}</td>
+                                <td style="text-align: center;">@{{ getPurchaseCount(trip, 'vk_app') }}</td>
+                                <td style="text-align: center;">@{{ getPurchaseCount(trip, 'driver') }}</td>
+                                <td style="text-align: center;">@{{ getPurchaseCount(trip, 'cashier') }}</td>
+                                <td style="text-align: center; font-weight: 600;">@{{ getPurchaseCount(trip, 'total') }}</td>
+                                <td style="text-align: center;">@{{ trip.total_seats || trip.seats || '—' }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -654,18 +655,20 @@
                     datePicker: null,
                     // Направления по умолчанию (external_id станций)
                     defaultRoutes: [
-                        // 507 — Южно-Сахалинск, ЖД вокзал(83360) → Смирных, Арена(49439)
-                        { routeNumber: '507', fromExternalId: '83360', toExternalId: '49439', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Смирных, Арена' },
-                        // 510 — Южно-Сахалинск, ЖД вокзал(83360) → Макаров(24980)
-                        { routeNumber: '510', fromExternalId: '83360', toExternalId: '24980', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Макаров' },
-                        // 509 — Южно-Сахалинск, ЖД вокзал(83360) → Вахрушев(50349)
-                        { routeNumber: '509', fromExternalId: '83360', toExternalId: '50349', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Вахрушев' },
-                        // 505 — Южно-Сахалинск, ЖД вокзал(83360) → Быков(90214)
-                        { routeNumber: '505', fromExternalId: '83360', toExternalId: '90214', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Быков' },
-                        // 518 — Южно-Сахалинск, ЖД вокзал(83360) → Невельск, автовокасса(30190)
-                        { routeNumber: '518', fromExternalId: '83360', toExternalId: '30190', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Невельск, автовокасса' },
-                        // 516 — Южно-Сахалинск, ЖД вокзал(83360) → Холмск, автовокасса(78747)
-                        { routeNumber: '516', fromExternalId: '83360', toExternalId: '78747', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Холмск, автовокасса' },
+                        // 504 — Южно-Сахалинск, ЖД вокзал → Александровск-Сахалинский, автостанция
+                        {routeNumber: '504', fromExternalId: '2', toExternalId: '33', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Александровск-Сахалинский, Автостанция'},
+                        // 507 — Южно-Сахалинск, ЖД вокзал(2) → Смирных, Арена(49439)
+                        { routeNumber: '507', fromExternalId: '2', toExternalId: '6', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Смирных, Арена' },
+                        // 510 — Южно-Сахалинск, ЖД вокзал(2) → Макаров(24980)
+                        { routeNumber: '510', fromExternalId: '2', toExternalId: '10', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Макаров' },
+                        // 509 — Южно-Сахалинск, ЖД вокзал(2) → Вахрушев(50349)
+                        { routeNumber: '509', fromExternalId: '2', toExternalId: '13', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Вахрушев' },
+                        // 505 — Южно-Сахалинск, ЖД вокзал(2) → Быков(90214)
+                        { routeNumber: '505', fromExternalId: '2', toExternalId: '46', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Быков' },
+                        // 518 — Южно-Сахалинск, ЖД вокзал(2) → Невельск, автовокасса(30190)
+                        { routeNumber: '518', fromExternalId: '2', toExternalId: '3', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Невельск, автовокасса' },
+                        // 516 — Южно-Сахалинск, ЖД вокзал(2) → Холмск, автовокасса(78747)
+                        { routeNumber: '516', fromExternalId: '2', toExternalId: '32', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Холмск, автовокасса' },
                         // 504 — Южно-Сахалинск, ЖД вокзал → Александровск-Сахалинский, автостанция
                         // Примечание: ID для Александровск-Сахалинский не указан, можно добавить позже
                     ],
@@ -862,11 +865,29 @@
                         // Объединяем все результаты
                         const allTrips = results.flat();
                         
+                        // Фильтруем рейсы по выбранной дате в местном времени (UTC+11)
+                        // Сервер может возвращать рейсы на запрошенную дату и на следующий день из-за часовых поясов
+                        const selectedDate = new Date(this.filters.date + 'T00:00:00');
+                        const selectedDateStr = this.filters.date; // YYYY-MM-DD
+                        
+                        const filteredByDate = allTrips.filter(trip => {
+                            if (!trip.dt_depart) return false;
+                            
+                            // Конвертируем UTC время в местное время Сахалина (UTC+11)
+                            const departDate = new Date(trip.dt_depart);
+                            const localDateStr = departDate.toLocaleDateString('en-CA', {
+                                timeZone: 'Asia/Sakhalin'
+                            }); // Возвращает YYYY-MM-DD
+                            
+                            // Оставляем только рейсы, у которых дата отправления в местном времени совпадает с выбранной датой
+                            return localDateStr === selectedDateStr;
+                        });
+                        
                         // Удаляем дубликаты по id (если рейс встречается в нескольких запросах)
                         const uniqueTrips = [];
                         const seenIds = new Set();
                         
-                        for (const trip of allTrips) {
+                        for (const trip of filteredByDate) {
                             const tripId = trip.id || `${trip.id_route}_${trip.dt_depart}`;
                             if (!seenIds.has(tripId)) {
                                 seenIds.add(tripId);
@@ -895,9 +916,11 @@
                 formatTime(dateTime) {
                     if (!dateTime) return '—';
                     const date = new Date(dateTime);
+                    // Конвертируем UTC время в местное время Сахалина (UTC+11)
                     return date.toLocaleTimeString('ru-RU', {
                         hour: '2-digit',
-                        minute: '2-digit'
+                        minute: '2-digit',
+                        timeZone: 'Asia/Sakhalin'
                     });
                 },
                 
@@ -945,6 +968,18 @@
                     if (system === 'РФБАС') return 'system-rfbas';
                     if (system === 'АРТМАРК') return 'system-artmark';
                     return '';
+                },
+                
+                getPurchaseCount(trip, source) {
+                    if (!trip.purchase_stats) {
+                        return source === 'total' ? (trip.sold_tickets || trip.sold_seats || trip.passengers_count || 0) : 0;
+                    }
+                    
+                    if (source === 'total') {
+                        return trip.purchase_stats.total || 0;
+                    }
+                    
+                    return trip.purchase_stats[source] || 0;
                 },
                 
                 goToTripDetails(trip) {

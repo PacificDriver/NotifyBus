@@ -441,6 +441,7 @@ class PbOrderItemImporter
             'ticket_discount' => $this->decimalValue($data['BAG_COST'] ?? null),
             'ticket_status' => $this->mapTicketStatus($data['STATUS'] ?? null),
             'ticket_purchased_at' => $this->parseDateTime($data['ROUTE_BEGIN'] ?? null),
+            'purchase_source' => $this->normalizePurchaseSource($data['PurchaseSource'] ?? $data['PURCHASE_SOURCE'] ?? null),
             'external_payload' => $data,
             'data_source' => 'pb_order_item',
         ];
@@ -495,6 +496,34 @@ class PbOrderItemImporter
         $type = strtoupper(trim((string) $type));
 
         return $type ?: null;
+    }
+
+    /**
+     * Нормализовать источник покупки
+     */
+    protected function normalizePurchaseSource($value): ?string
+    {
+        if (!$value) {
+            return null;
+        }
+
+        $source = strtolower(trim((string) $value));
+
+        // Маппинг значений из БД
+        $mapping = [
+            'vk_app' => 'vk_app',
+            'website' => 'website',
+            'mobile_app' => 'mobile_app',
+            'driver' => 'driver',
+            'cashier' => 'cashier',
+            'касса' => 'cashier',
+            'водитель' => 'driver',
+            'сайт' => 'website',
+            'вк' => 'vk_app',
+            'мобильное приложение' => 'mobile_app',
+        ];
+
+        return $mapping[$source] ?? $source;
     }
 
     /**
