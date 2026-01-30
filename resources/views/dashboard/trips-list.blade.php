@@ -437,26 +437,6 @@
                 <h2>Фильтры поиска</h2>
                 <div class="grid">
                     <div class="form-group">
-                        <label for="fromStation">Станция отправления</label>
-                        <select id="fromStation" v-model="filters.from" @change="onMainFilterChange">
-                            <option value="">Выберите станцию...</option>
-                            <option v-for="station in stations" :key="station.id" :value="station.id">
-                                @{{ station.name }}
-                            </option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="toStation">Станция прибытия</label>
-                        <select id="toStation" v-model="filters.to" @change="onMainFilterChange">
-                            <option value="">Выберите станцию...</option>
-                            <option v-for="station in stations" :key="station.id" :value="station.id">
-                                @{{ station.name }}
-                            </option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
                         <label for="tripDate">Дата рейса</label>
                         <input type="text" id="tripDate" v-model="filters.date" placeholder="Выберите дату..." readonly>
                     </div>
@@ -466,10 +446,13 @@
                         <input type="text" id="routeNumber" v-model="filters.routeNumber" @input="onFilterChange" placeholder="Введите номер рейса...">
                     </div>
                 </div>
+                <div style="margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 0.9rem; color: #666;">
+                    <strong>Направления:</strong> Автоматически загружаются рейсы по всем основным направлениям (туда и обратно)
+                </div>
             </div>
             
             <!-- Таблица рейсов -->
-            <div class="card" v-if="filters.from && filters.to && filters.date">
+            <div class="card" v-if="filters.date">
                 <h2>Рейсы (@{{ filteredTrips.length }})<span v-if="filters.routeNumber && filteredTrips.length !== trips.length" style="color: #666; font-size: 0.9rem; font-weight: normal;"> из @{{ trips.length }}</span></h2>
                 
                 <div v-if="loading" class="loading">
@@ -527,7 +510,7 @@
             
             <div v-else class="card">
                 <div class="empty-state">
-                    <p>Выберите станции отправления, прибытия и дату для отображения рейсов</p>
+                    <p>Выберите дату для отображения рейсов</p>
                 </div>
             </div>
         </div>
@@ -660,18 +643,33 @@
         createApp({
             data() {
                 return {
-                    stations: [],
                     trips: [],
                     loading: false,
                     error: null,
                     filters: {
-                        from: '',
-                        to: '',
-                        date: '',
+                        date: new Date().toISOString().split('T')[0], // Сегодняшняя дата по умолчанию
                         routeNumber: ''
                     },
                     allTrips: [], // Все загруженные рейсы (до фильтрации по номеру)
                     datePicker: null,
+                    // Направления по умолчанию (external_id станций)
+                    defaultRoutes: [
+                        // 507 — Южно-Сахалинск, ЖД вокзал(83360) → Смирных, Арена(49439)
+                        { routeNumber: '507', fromExternalId: '83360', toExternalId: '49439', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Смирных, Арена' },
+                        // 510 — Южно-Сахалинск, ЖД вокзал(83360) → Макаров(24980)
+                        { routeNumber: '510', fromExternalId: '83360', toExternalId: '24980', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Макаров' },
+                        // 509 — Южно-Сахалинск, ЖД вокзал(83360) → Вахрушев(50349)
+                        { routeNumber: '509', fromExternalId: '83360', toExternalId: '50349', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Вахрушев' },
+                        // 505 — Южно-Сахалинск, ЖД вокзал(83360) → Быков(90214)
+                        { routeNumber: '505', fromExternalId: '83360', toExternalId: '90214', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Быков' },
+                        // 518 — Южно-Сахалинск, ЖД вокзал(83360) → Невельск, автовокасса(30190)
+                        { routeNumber: '518', fromExternalId: '83360', toExternalId: '30190', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Невельск, автовокасса' },
+                        // 516 — Южно-Сахалинск, ЖД вокзал(83360) → Холмск, автовокасса(78747)
+                        { routeNumber: '516', fromExternalId: '83360', toExternalId: '78747', fromName: 'Южно-Сахалинск, ЖД вокзал', toName: 'Холмск, автовокасса' },
+                        // 504 — Южно-Сахалинск, ЖД вокзал → Александровск-Сахалинский, автостанция
+                        // Примечание: ID для Александровск-Сахалинский не указан, можно добавить позже
+                    ],
+                    stationMap: {}, // Карта external_id -> внутренний ID
                     contextMenu: {
                         show: false,
                         x: 0,
@@ -710,7 +708,47 @@
                 }
             },
             methods: {
-                async loadStations() {
+                
+                async initDatePicker() {
+                    await this.$nextTick();
+                    const dateInput = document.getElementById('tripDate');
+                    if (dateInput && !this.datePicker) {
+                        this.datePicker = flatpickr(dateInput, {
+                            locale: 'ru',
+                            dateFormat: 'Y-m-d',
+                            defaultDate: this.filters.date || new Date(),
+                            onChange: (selectedDates, dateStr) => {
+                                this.filters.date = dateStr;
+                                this.onMainFilterChange();
+                            }
+                        });
+                        // Убеждаемся, что дата установлена
+                        if (!this.filters.date) {
+                            this.filters.date = new Date().toISOString().split('T')[0];
+                        }
+                        // Загружаем рейсы после инициализации datePicker
+                        this.onMainFilterChange();
+                    }
+                },
+                
+                onMainFilterChange() {
+                    // Перезагружаем данные при изменении даты
+                    if (this.filters.date) {
+                        this.loadTrips();
+                    } else {
+                        this.trips = [];
+                        this.allTrips = [];
+                        this.error = null;
+                    }
+                },
+                
+                onFilterChange() {
+                    // Для routeNumber фильтрация происходит автоматически через computed свойство filteredTrips
+                    // Ничего не делаем, просто позволяем Vue обновить computed свойство
+                },
+                
+                async loadStationMap() {
+                    // Загружаем карту external_id -> внутренний ID станций
                     try {
                         const response = await fetch('/api/stations', {
                             headers: {
@@ -727,53 +765,20 @@
                         
                         const data = await response.json();
                         if (data.success && data.data) {
-                            this.stations = Array.isArray(data.data) ? data.data : [];
-                        } else {
-                            throw new Error(data.message || 'Не удалось загрузить станции');
-                        }
-                    } catch (error) {
-                        console.error('Error loading stations:', error);
-                        this.error = 'Ошибка загрузки станций: ' + error.message;
-                    }
-                },
-                
-                initDatePicker() {
-                    this.$nextTick(() => {
-                        const dateInput = document.getElementById('tripDate');
-                        if (dateInput && !this.datePicker) {
-                            this.datePicker = flatpickr(dateInput, {
-                                locale: 'ru',
-                                dateFormat: 'Y-m-d',
-                                defaultDate: new Date(),
-                                onChange: (selectedDates, dateStr) => {
-                                    this.filters.date = dateStr;
-                                    this.onMainFilterChange();
+                            const stations = Array.isArray(data.data) ? data.data : [];
+                            stations.forEach(station => {
+                                if (station.external_id) {
+                                    this.stationMap[station.external_id] = station.id;
                                 }
                             });
-                            // Устанавливаем сегодняшнюю дату по умолчанию
-                            this.filters.date = new Date().toISOString().split('T')[0];
                         }
-                    });
-                },
-                
-                onMainFilterChange() {
-                    // Перезагружаем данные при изменении основных фильтров (from, to, date)
-                    if (this.filters.from && this.filters.to && this.filters.date) {
-                        this.loadTrips();
-                    } else {
-                        this.trips = [];
-                        this.allTrips = [];
-                        this.error = null;
+                    } catch (error) {
+                        console.error('Error loading station map:', error);
                     }
-                },
-                
-                onFilterChange() {
-                    // Для routeNumber фильтрация происходит автоматически через computed свойство filteredTrips
-                    // Ничего не делаем, просто позволяем Vue обновить computed свойство
                 },
                 
                 async loadTrips() {
-                    if (!this.filters.from || !this.filters.to || !this.filters.date) {
+                    if (!this.filters.date) {
                         return;
                     }
                     
@@ -781,34 +786,103 @@
                     this.error = null;
                     this.trips = [];
                     
+                    // Если карта станций не загружена, загружаем её
+                    if (Object.keys(this.stationMap).length === 0) {
+                        await this.loadStationMap();
+                    }
+                    
                     try {
                         const formattedDate = this.filters.date;
-                        const response = await fetch(`/api/races/all?from=${this.filters.from}&to=${this.filters.to}&date=${formattedDate}`, {
-                            headers: {
-                                'Accept': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                                'X-Requested-With': 'XMLHttpRequest',
-                            },
-                            credentials: 'include',
+                        const allTripsPromises = [];
+                        
+                        // Создаём запросы для всех направлений (туда и обратно)
+                        for (const route of this.defaultRoutes) {
+                            // Пропускаем маршруты без ID
+                            if (!route.fromExternalId || !route.toExternalId) {
+                                continue;
+                            }
+                            
+                            const fromId = this.stationMap[route.fromExternalId];
+                            const toId = this.stationMap[route.toExternalId];
+                            
+                            // Пропускаем если не найдены внутренние ID
+                            if (!fromId || !toId) {
+                                console.warn(`Станции не найдены для маршрута ${route.routeNumber}:`, route);
+                                continue;
+                            }
+                            
+                            // Запрос туда
+                            allTripsPromises.push(
+                                fetch(`/api/races/all?from=${fromId}&to=${toId}&date=${formattedDate}`, {
+                                    headers: {
+                                        'Accept': 'application/json',
+                                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                                        'X-Requested-With': 'XMLHttpRequest',
+                                    },
+                                    credentials: 'include',
+                                }).then(async (response) => {
+                                    if (!response.ok) {
+                                        const errorData = await response.json().catch(() => ({}));
+                                        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+                                    }
+                                    const data = await response.json();
+                                    return data.success && data.data ? data.data : [];
+                                }).catch(error => {
+                                    console.error(`Ошибка загрузки рейсов для маршрута ${route.routeNumber} (туда):`, error);
+                                    return [];
+                                })
+                            );
+                            
+                            // Запрос обратно
+                            allTripsPromises.push(
+                                fetch(`/api/races/all?from=${toId}&to=${fromId}&date=${formattedDate}`, {
+                                    headers: {
+                                        'Accept': 'application/json',
+                                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                                        'X-Requested-With': 'XMLHttpRequest',
+                                    },
+                                    credentials: 'include',
+                                }).then(async (response) => {
+                                    if (!response.ok) {
+                                        const errorData = await response.json().catch(() => ({}));
+                                        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+                                    }
+                                    const data = await response.json();
+                                    return data.success && data.data ? data.data : [];
+                                }).catch(error => {
+                                    console.error(`Ошибка загрузки рейсов для маршрута ${route.routeNumber} (обратно):`, error);
+                                    return [];
+                                })
+                            );
+                        }
+                        
+                        // Ждём все запросы
+                        const results = await Promise.all(allTripsPromises);
+                        
+                        // Объединяем все результаты
+                        const allTrips = results.flat();
+                        
+                        // Удаляем дубликаты по id (если рейс встречается в нескольких запросах)
+                        const uniqueTrips = [];
+                        const seenIds = new Set();
+                        
+                        for (const trip of allTrips) {
+                            const tripId = trip.id || `${trip.id_route}_${trip.dt_depart}`;
+                            if (!seenIds.has(tripId)) {
+                                seenIds.add(tripId);
+                                uniqueTrips.push(trip);
+                            }
+                        }
+                        
+                        this.trips = uniqueTrips;
+                        
+                        // Сортируем по времени отправления
+                        this.trips.sort((a, b) => {
+                            const timeA = a.dt_depart ? new Date(a.dt_depart).getTime() : 0;
+                            const timeB = b.dt_depart ? new Date(b.dt_depart).getTime() : 0;
+                            return timeA - timeB;
                         });
                         
-                        if (!response.ok) {
-                            const errorData = await response.json().catch(() => ({}));
-                            throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-                        }
-                        
-                        const data = await response.json();
-                        if (data.success && data.data) {
-                            this.trips = Array.isArray(data.data) ? data.data : [];
-                            // Сортируем по времени отправления
-                            this.trips.sort((a, b) => {
-                                const timeA = a.dt_depart ? new Date(a.dt_depart).getTime() : 0;
-                                const timeB = b.dt_depart ? new Date(b.dt_depart).getTime() : 0;
-                                return timeA - timeB;
-                            });
-                        } else {
-                            throw new Error(data.message || 'Не удалось загрузить рейсы');
-                        }
                     } catch (error) {
                         console.error('Error loading trips:', error);
                         this.error = error.message || 'Ошибка загрузки рейсов';
@@ -1281,9 +1355,11 @@
                     }
                 }
             },
-            mounted() {
-                this.loadStations();
-                this.initDatePicker();
+            async mounted() {
+                // Сначала загружаем карту станций
+                await this.loadStationMap();
+                // Затем инициализируем datePicker (он автоматически загрузит рейсы)
+                await this.initDatePicker();
                 
                 // Скрываем контекстное меню при клике вне его
                 document.addEventListener('click', (e) => {
