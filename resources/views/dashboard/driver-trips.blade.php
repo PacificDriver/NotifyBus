@@ -542,7 +542,7 @@
                                             <td>
                                                 <button 
                                                     class="btn btn-primary btn-small" 
-                                                    onclick="assignRace('${escapeHtml(race.id)}', '${escapeHtml(race.route || race.id)}', ${race.from_id}, ${race.to_id}, '${race.dt_depart}', '${race.dt_arrive || ''}', '${escapeHtml(race.from_name || race.route_start || '')}', '${escapeHtml(race.to_name || race.route_end || '')}')"
+                                                    onclick="assignRace('${escapeHtml(race.id)}', '${escapeHtml(race.route || race.id)}', '${race.from_id || ''}', '${race.to_id || ''}', '${race.dt_depart}', '${race.dt_arrive || ''}', '${escapeHtml(race.from_name || race.route_start || '')}', '${escapeHtml(race.to_name || race.route_end || '')}')"
                                                     ${!isActive ? 'disabled' : ''}
                                                 >
                                                     ${isActive ? '✓ Назначить' : 'Отменен'}
@@ -562,6 +562,22 @@
 
         // Назначить рейс
         async function assignRace(raceId, routeNumber, fromStationId, toStationId, departureTime, arrivalTime, fromStationName, toStationName) {
+            // Проверяем наличие ID станций
+            if (!fromStationId || !toStationId) {
+                alert('❌ Ошибка: отсутствуют ID станций. Невозможно назначить рейс.');
+                console.error('Missing station IDs:', { fromStationId, toStationId });
+                return;
+            }
+            
+            const fromId = parseInt(fromStationId);
+            const toId = parseInt(toStationId);
+            
+            if (isNaN(fromId) || isNaN(toId)) {
+                alert('❌ Ошибка: некорректные ID станций.');
+                console.error('Invalid station IDs:', { fromStationId, toStationId, fromId, toId });
+                return;
+            }
+            
             try {
                 const response = await fetch(`/api/drivers/${driverId}/assign-race`, {
                     method: 'POST',
@@ -573,8 +589,8 @@
                     credentials: 'include',
                     body: JSON.stringify({
                         race_id: raceId,
-                        from_station_id: parseInt(fromStationId),
-                        to_station_id: parseInt(toStationId),
+                        from_station_id: fromId,
+                        to_station_id: toId,
                         departure_time: departureTime,
                         arrival_time: arrivalTime || null,
                         route_number: routeNumber,
@@ -591,10 +607,11 @@
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                 } else {
                     alert('❌ ' + (result.message || 'Ошибка при назначении рейса'));
+                    console.error('Server error:', result);
                 }
             } catch (error) {
                 console.error('Error assigning race:', error);
-                alert('❌ Ошибка при назначении рейса');
+                alert('❌ Ошибка при назначении рейса: ' + error.message);
             }
         }
 
