@@ -392,9 +392,9 @@
                                     <td>${trip.id}</td>
                                     <td style="font-weight: 600; color: #667eea;">${escapeHtml(trip.trip_number)}</td>
                                     <td>
-                                        <strong>${escapeHtml(trip.route?.departure_station?.name || '—')}${trip.route?.departure_station?.id ? ` (${trip.route.departure_station.id})` : ''}</strong>
+                                        <strong>${escapeHtml(trip.route?.departure_station?.name || '—')}${trip.route?.departure_station?.external_id ? ` (${trip.route?.departure_station?.external_id})` : ''}</strong>
                                         <span style="color: #667eea;"> → </span>
-                                        <strong>${escapeHtml(trip.route?.arrival_station?.name || '—')}${trip.route?.arrival_station?.id ? ` (${trip.route.arrival_station.id})` : ''}</strong>
+                                        <strong>${escapeHtml(trip.route?.arrival_station?.name || '—')}${trip.route?.arrival_station?.external_id ? ` (${trip.route?.arrival_station?.external_id})` : ''}</strong>
                                     </td>
                                     <td>${formatDateTime(trip.departure_time)}</td>
                                     <td>${formatDateTime(trip.arrival_time)}</td>
