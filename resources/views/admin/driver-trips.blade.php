@@ -569,15 +569,6 @@
                 return;
             }
             
-            const fromId = parseInt(fromStationId);
-            const toId = parseInt(toStationId);
-            
-            if (isNaN(fromId) || isNaN(toId)) {
-                alert('❌ Ошибка: некорректные ID станций.');
-                console.error('Invalid station IDs:', { fromStationId, toStationId, fromId, toId });
-                return;
-            }
-            
             try {
                 const response = await fetch(`/api/drivers/${driverId}/assign-race`, {
                     method: 'POST',
@@ -589,8 +580,8 @@
                     credentials: 'include',
                     body: JSON.stringify({
                         race_id: raceId,
-                        from_station_id: fromId,
-                        to_station_id: toId,
+                        from_station_id: fromStationId,
+                        to_station_id: toStationId,
                         departure_time: departureTime,
                         arrival_time: arrivalTime || null,
                         route_number: routeNumber,

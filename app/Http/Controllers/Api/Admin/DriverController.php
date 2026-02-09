@@ -179,8 +179,8 @@ class DriverController extends Controller
 
         $validated = $request->validate([
             'race_id' => 'required|string',
-            'from_station_id' => 'required|exists:stations,id',
-            'to_station_id' => 'required|exists:stations,id',
+            'from_station_id' => 'required',
+            'to_station_id' => 'required',
             'departure_time' => 'required',
             'arrival_time' => 'nullable',
             'route_number' => 'nullable|string',
@@ -189,10 +189,33 @@ class DriverController extends Controller
         ]);
 
         try {
+            // Находим станции по external_id или внутреннему ID
+            $fromStation = Station::where('external_id', (string)$validated['from_station_id'])
+                ->orWhere('id', $validated['from_station_id'])
+                ->first();
+            
+            $toStation = Station::where('external_id', (string)$validated['to_station_id'])
+                ->orWhere('id', $validated['to_station_id'])
+                ->first();
+            
+            if (!$fromStation) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Станция отправления не найдена (ID: ' . $validated['from_station_id'] . ')',
+                ], 400);
+            }
+            
+            if (!$toStation) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Станция прибытия не найдена (ID: ' . $validated['to_station_id'] . ')',
+                ], 400);
+            }
+
             // Получаем или создаем маршрут
             $route = \App\Models\Route::firstOrCreate([
-                'departure_station_id' => $validated['from_station_id'],
-                'arrival_station_id' => $validated['to_station_id'],
+                'departure_station_id' => $fromStation->id,
+                'arrival_station_id' => $toStation->id,
             ], [
                 'route_number' => $validated['route_number'] ?? 'unknown',
                 'name' => ($validated['from_station_name'] ?? '') . ' - ' . ($validated['to_station_name'] ?? ''),
