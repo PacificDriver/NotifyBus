@@ -392,9 +392,9 @@
                                     <td>${trip.id}</td>
                                     <td style="font-weight: 600; color: #667eea;">${escapeHtml(trip.trip_number)}</td>
                                     <td>
-                                        <strong>${escapeHtml(trip.route?.departure_station?.name || '—')}</strong>
+                                        <strong>${escapeHtml(trip.route?.departure_station?.name || '—')}${trip.route?.departure_station?.id ? ` (${trip.route.departure_station.id})` : ''}</strong>
                                         <span style="color: #667eea;"> → </span>
-                                        <strong>${escapeHtml(trip.route?.arrival_station?.name || '—')}</strong>
+                                        <strong>${escapeHtml(trip.route?.arrival_station?.name || '—')}${trip.route?.arrival_station?.id ? ` (${trip.route.arrival_station.id})` : ''}</strong>
                                     </td>
                                     <td>${formatDateTime(trip.departure_time)}</td>
                                     <td>${formatDateTime(trip.arrival_time)}</td>
@@ -498,10 +498,22 @@
                 return;
             }
             
+            // Удаляем дубликаты по id (если рейс встречается несколько раз)
+            const uniqueRaces = [];
+            const seenIds = new Set();
+            
+            for (const race of races) {
+                const raceId = race.id || `${race.id_route}_${race.dt_depart}`;
+                if (!seenIds.has(raceId)) {
+                    seenIds.add(raceId);
+                    uniqueRaces.push(race);
+                }
+            }
+            
             const html = `
                 <div style="margin-top: 20px;">
                     <div style="background: #e7f5ff; padding: 12px 20px; border-radius: 8px; margin-bottom: 15px;">
-                        <strong style="color: #1c7ed6;">✓ Найдено рейсов: ${races.length}</strong>
+                        <strong style="color: #1c7ed6;">✓ Найдено рейсов: ${uniqueRaces.length}${uniqueRaces.length !== races.length ? ` (из ${races.length}, дубликаты удалены)` : ''}</strong>
                     </div>
                     <div class="table-container">
                         <table>
@@ -518,7 +530,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                ${races.map(race => {
+                                ${uniqueRaces.map(race => {
                                     const isActive = race.active !== false;
                                     const statusClass = isActive ? 'badge-success' : 'badge-danger';
                                     const statusText = isActive ? 'Активен' : 'Отменен';
@@ -562,10 +574,6 @@
 
         // Назначить рейс
         async function assignRace(raceId, routeNumber, fromStationId, toStationId, departureTime, arrivalTime, fromStationName, toStationName) {
-            if (!confirm(`Назначить рейс №${routeNumber} на ${new Date(departureTime).toLocaleString('ru-RU')} водителю ${driverName}?`)) {
-                return;
-            }
-            
             try {
                 const response = await fetch(`/api/drivers/${driverId}/assign-race`, {
                     method: 'POST',
@@ -604,8 +612,6 @@
 
         // Снять рейс
         async function unassignTrip(tripId) {
-            if (!confirm('Снять этот рейс с водителя?')) return;
-
             try {
                 const response = await fetch(`/api/drivers/${driverId}/trips/${tripId}`, {
                     method: 'DELETE',
