@@ -190,14 +190,20 @@ class DriverController extends Controller
         ]);
 
         try {
-            // Находим станции по external_id или внутреннему ID
-            $fromStation = Station::where('external_id', (string)$validated['from_station_id'])
-                ->orWhere('id', $validated['from_station_id'])
-                ->first();
+            // Находим станции по внутреннему ID (приоритет) или external_id
+            // Сначала пробуем найти по внутреннему ID
+            $fromStation = Station::find($validated['from_station_id']);
             
-            $toStation = Station::where('external_id', (string)$validated['to_station_id'])
-                ->orWhere('id', $validated['to_station_id'])
-                ->first();
+            // Если не найдено по ID, ищем по external_id
+            if (!$fromStation) {
+                $fromStation = Station::where('external_id', (string)$validated['from_station_id'])->first();
+            }
+            
+            $toStation = Station::find($validated['to_station_id']);
+            
+            if (!$toStation) {
+                $toStation = Station::where('external_id', (string)$validated['to_station_id'])->first();
+            }
             
             if (!$fromStation) {
                 return response()->json([
