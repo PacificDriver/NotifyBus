@@ -112,6 +112,30 @@ class DriverAuthController extends Controller
     {
         $driver = $request->user();
 
+        // Загружаем назначенные рейсы с отношениями
+        $trips = $driver->trips()
+            ->with([
+                'route.departureStation',
+                'route.arrivalStation',
+            ])
+            ->orderBy('departure_time', 'asc')
+            ->get();
+
+        // Форматируем рейсы в нужный формат
+        $formattedTrips = $trips->map(function ($trip) {
+            $route = $trip->route;
+            $departureStation = $route->departureStation ?? null;
+            $arrivalStation = $route->arrivalStation ?? null;
+
+            return [
+                'routeNumber' => $route->route_number ?? '',
+                'fromExternalId' => $departureStation->external_id ?? '',
+                'toExternalId' => $arrivalStation->external_id ?? '',
+                'fromName' => $departureStation->name ?? '',
+                'toName' => $arrivalStation->name ?? '',
+            ];
+        })->toArray();
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -124,6 +148,7 @@ class DriverAuthController extends Controller
                 'phone' => $driver->phone,
                 'email' => $driver->email,
                 'is_active' => $driver->is_active,
+                'trips' => $formattedTrips,
             ],
         ]);
     }
