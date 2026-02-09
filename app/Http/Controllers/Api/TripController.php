@@ -99,12 +99,36 @@ class TripController extends Controller
                     'total' => 0,
                 ];
 
+                // from_id и to_id из API - это external_id станций
+                // Находим станции по external_id и используем их внутренний id
+                $raceFromId = $race['from_id'] ?? null;
+                $raceToId = $race['to_id'] ?? null;
+                
+                $raceFromStation = null;
+                $raceToStation = null;
+                
+                if ($raceFromId) {
+                    // Ищем станцию по external_id
+                    $raceFromStation = Station::where('external_id', (string)$raceFromId)->first();
+                }
+                if ($raceToId) {
+                    // Ищем станцию по external_id
+                    $raceToStation = Station::where('external_id', (string)$raceToId)->first();
+                }
+                
+                // Используем найденные станции или fallback на выбранные в форме
+                $finalFromStation = $raceFromStation ?? $fromStation;
+                $finalToStation = $raceToStation ?? $toStation;
+
                 $enriched = array_merge($race, [
-                    'from_station_id' => $fromStation->id,
-                    'to_station_id' => $toStation->id,
-                    'from_station_name' => $race['route_start'] ?? $race['from_name'] ?? $fromStation->name,
-                    'to_station_name' => $race['route_end'] ?? $race['to_name'] ?? $toStation->name,
+                    'from_station_id' => $finalFromStation->id,
+                    'to_station_id' => $finalToStation->id,
+                    'from_station_name' => $race['route_start'] ?? $race['from_name'] ?? $finalFromStation->name,
+                    'to_station_name' => $race['route_end'] ?? $race['to_name'] ?? $finalToStation->name,
                     'purchase_stats' => $stats,
+                    // Сохраняем from_id и to_id из API для использования на фронтенде
+                    'from_id' => $race['from_id'] ?? null,
+                    'to_id' => $race['to_id'] ?? null,
                 ]);
 
                 // Определяем систему из поля provider
