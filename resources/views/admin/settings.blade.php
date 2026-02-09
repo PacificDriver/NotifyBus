@@ -722,6 +722,7 @@
                         <button type="submit" class="btn btn-primary">💾 Сохранить настройки</button>
                         <button type="button" class="btn btn-success" onclick="testCarrierApi()">🔍 Проверить подключение</button>
                         <button type="button" class="btn btn-secondary" onclick="syncStations(this)" id="sync-stations-btn">🔄 Обновить станции</button>
+                        <button type="button" class="btn btn-danger" onclick="clearAllStations()" id="clear-stations-btn">🗑️ Очистить все станции</button>
                     </div>
                     
                     <div id="sync-stations-result" style="margin-top: 15px;"></div>
@@ -2104,6 +2105,68 @@
                 }
                 
                 resultDiv.innerHTML = `<div class="alert alert-error">⚠️ Ошибка синхронизации станций:<br><br>${errorMessage}</div>`;
+            } finally {
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        }
+
+        async function clearAllStations() {
+            if (!confirm('⚠️ ВНИМАНИЕ!\n\nВы действительно хотите удалить ВСЕ станции из базы данных?\n\nЭто действие нельзя отменить!\n\nПосле очистки вам нужно будет заново синхронизировать станции.')) {
+                return;
+            }
+            
+            const button = document.getElementById('clear-stations-btn');
+            const resultDiv = document.getElementById('sync-stations-result');
+            const originalText = button.textContent;
+            
+            button.disabled = true;
+            button.textContent = '⏳ Удаление...';
+            resultDiv.innerHTML = '<div class="alert alert-info">⏳ Удаление всех станций из базы данных...</div>';
+            
+            console.log('Starting stations clearing...');
+            
+            try {
+                const response = await fetch(`${API_BASE}/stations/clear`, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                });
+                
+                console.log('Clear response status:', response.status);
+                
+                const data = await response.json();
+                console.log('Clear response data:', data);
+                
+                if (!response.ok) {
+                    if (response.status === 403) {
+                        throw new Error('Доступ запрещён. Требуется роль администратора.');
+                    } else if (response.status === 401) {
+                        throw new Error('Не авторизован. Пожалуйста, войдите в систему.');
+                    }
+                    throw new Error(data.message || `HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                if (data.success) {
+                    resultDiv.innerHTML = `<div class="alert alert-success">✅ Все станции успешно удалены!<br>Удалено станций: <strong>${data.deleted_count || 0}</strong><br><br><strong>💡 Совет:</strong> Теперь нажмите "Обновить станции" для синхронизации с API перевозчика.</div>`;
+                } else {
+                    throw new Error(data.message || 'Неизвестная ошибка при удалении');
+                }
+            } catch (error) {
+                console.error('Error clearing stations:', error);
+                let errorMessage = error.message;
+                
+                if (error.message.includes('403') || error.message.includes('Доступ запрещён')) {
+                    errorMessage = 'Доступ запрещён. Убедитесь, что вы вошли как администратор.';
+                } else if (error.message.includes('401') || error.message.includes('Не авторизован')) {
+                    errorMessage = 'Сессия истекла. Пожалуйста, войдите в систему заново.';
+                }
+                
+                resultDiv.innerHTML = `<div class="alert alert-error">⚠️ Ошибка при удалении станций:<br><br>${errorMessage}</div>`;
             } finally {
                 button.disabled = false;
                 button.textContent = originalText;

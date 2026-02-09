@@ -80,6 +80,51 @@ class StationController extends Controller
             ], 400);
         }
     }
+
+    /**
+     * Удалить все станции из базы данных
+     * Доступно только администраторам
+     */
+    public function clear(Request $request): JsonResponse
+    {
+        try {
+            \Illuminate\Support\Facades\Log::info('Starting stations clearing');
+            
+            $count = Station::count();
+            
+            if ($count === 0) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'В базе данных нет станций для удаления',
+                    'deleted_count' => 0,
+                ]);
+            }
+            
+            // Удаляем все станции
+            Station::query()->delete();
+            
+            \Illuminate\Support\Facades\Log::info('Stations cleared successfully', [
+                'deleted_count' => $count,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => "Успешно удалено станций: {$count}",
+                'deleted_count' => $count,
+            ]);
+            
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Stations clearing failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Ошибка при удалении станций: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
 }
 
 
