@@ -446,6 +446,13 @@
             toSelect.innerHTML = '<option value="">Станция прибытия...</option>' + options;
         }
 
+        // Найти внутренний ID станции по external_id
+        function findStationIdByExternalId(externalId) {
+            if (!externalId) return null;
+            const station = stations.find(s => String(s.external_id) === String(externalId));
+            return station ? station.id : null;
+        }
+
         // Поиск рейсов
         async function searchRaces() {
             const from = document.getElementById('fromStation').value;
@@ -542,7 +549,7 @@
                                             <td>
                                                 <button 
                                                     class="btn btn-primary btn-small" 
-                                                    onclick="assignRace('${escapeHtml(race.id)}', '${escapeHtml(race.route || race.id)}', ${race.from_station_id}, ${race.to_station_id}, '${race.dt_depart}', '${race.dt_arrive || ''}', '${escapeHtml(race.route_start || '')}', '${escapeHtml(race.route_end || '')}')"
+                                                    onclick="assignRace('${escapeHtml(race.id)}', '${escapeHtml(race.route || race.id)}', '${race.from_id || ''}', '${race.to_id || ''}', '${race.dt_depart}', '${race.dt_arrive || ''}', '${escapeHtml(race.from_name || race.route_start || '')}', '${escapeHtml(race.to_name || race.route_end || '')}')"
                                                     ${!isActive ? 'disabled' : ''}
                                                 >
                                                     ${isActive ? '✓ Назначить' : 'Отменен'}
@@ -561,7 +568,16 @@
         }
 
         // Назначить рейс
-        async function assignRace(raceId, routeNumber, fromStationId, toStationId, departureTime, arrivalTime, fromStationName, toStationName) {
+        async function assignRace(raceId, routeNumber, fromExternalId, toExternalId, departureTime, arrivalTime, fromStationName, toStationName) {
+            // Находим внутренние ID станций по external_id
+            const fromStationId = findStationIdByExternalId(fromExternalId);
+            const toStationId = findStationIdByExternalId(toExternalId);
+            
+            if (!fromStationId || !toStationId) {
+                alert('❌ Ошибка: не удалось найти станции в базе данных. Пожалуйста, убедитесь, что станции синхронизированы.');
+                return;
+            }
+            
             try {
                 const response = await fetch(`/api/drivers/${driverId}/assign-race`, {
                     method: 'POST',
