@@ -498,22 +498,10 @@
                 return;
             }
             
-            // Удаляем дубликаты по id (если рейс встречается несколько раз)
-            const uniqueRaces = [];
-            const seenIds = new Set();
-            
-            for (const race of races) {
-                const raceId = race.id || `${race.id_route}_${race.dt_depart}`;
-                if (!seenIds.has(raceId)) {
-                    seenIds.add(raceId);
-                    uniqueRaces.push(race);
-                }
-            }
-            
             const html = `
                 <div style="margin-top: 20px;">
                     <div style="background: #e7f5ff; padding: 12px 20px; border-radius: 8px; margin-bottom: 15px;">
-                        <strong style="color: #1c7ed6;">✓ Найдено рейсов: ${uniqueRaces.length}${uniqueRaces.length !== races.length ? ` (из ${races.length}, дубликаты удалены)` : ''}</strong>
+                        <strong style="color: #1c7ed6;">✓ Найдено рейсов: ${races.length}</strong>
                     </div>
                     <div class="table-container">
                         <table>
@@ -530,7 +518,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                ${uniqueRaces.map(race => {
+                                ${races.map(race => {
                                     const isActive = race.active !== false;
                                     const statusClass = isActive ? 'badge-success' : 'badge-danger';
                                     const statusText = isActive ? 'Активен' : 'Отменен';
@@ -542,9 +530,9 @@
                                         <tr>
                                             <td>${departureDate}</td>
                                             <td style="font-size: 0.9rem;">
-                                                <div style="font-weight: 600;">${escapeHtml(race.route_start || fromStation.name)}</div>
+                                                <div style="font-weight: 600;">${escapeHtml(race.from_name || race.route_start || fromStation.name)}${race.from_id ? ` (${race.from_id})` : ''}</div>
                                                 <div style="color: #667eea; margin: 4px 0;">↓</div>
-                                                <div style="font-weight: 600;">${escapeHtml(race.route_end || toStation.name)}</div>
+                                                <div style="font-weight: 600;">${escapeHtml(race.to_name || race.route_end || toStation.name)}${race.to_id ? ` (${race.to_id})` : ''}</div>
                                             </td>
                                             <td style="font-weight: 700; color: #667eea; font-size: 1.1rem;">${escapeHtml(race.route || race.id || '—')}</td>
                                             <td style="font-weight: 600;">${departureTime}</td>
