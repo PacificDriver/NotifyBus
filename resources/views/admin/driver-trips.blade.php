@@ -542,7 +542,7 @@
                                             <td>
                                                 <button 
                                                     class="btn btn-primary btn-small" 
-                                                    onclick="assignRace('${escapeHtml(race.id)}', '${escapeHtml(race.route || race.id)}', '${race.from_id || ''}', '${race.to_id || ''}', '${race.dt_depart}', '${race.dt_arrive || ''}', '${escapeHtml(race.from_name || race.route_start || '')}', '${escapeHtml(race.to_name || race.route_end || '')}')"
+                                                    onclick="assignRace('${escapeHtml(race.id)}', '${escapeHtml(race.route || race.id)}', '${race.from_station_id || race.from_id || ''}', '${race.to_station_id || race.to_id || ''}', '${race.dt_depart}', '${race.dt_arrive || ''}', '${escapeHtml(race.from_name || race.route_start || '')}', '${escapeHtml(race.to_name || race.route_end || '')}')"
                                                     ${!isActive ? 'disabled' : ''}
                                                 >
                                                     ${isActive ? '✓ Назначить' : 'Отменен'}
@@ -562,13 +562,6 @@
 
         // Назначить рейс
         async function assignRace(raceId, routeNumber, fromStationId, toStationId, departureTime, arrivalTime, fromStationName, toStationName) {
-            // Проверяем наличие ID станций
-            if (!fromStationId || !toStationId) {
-                alert('❌ Ошибка: отсутствуют ID станций. Невозможно назначить рейс.');
-                console.error('Missing station IDs:', { fromStationId, toStationId });
-                return;
-            }
-            
             try {
                 const response = await fetch(`/api/drivers/${driverId}/assign-race`, {
                     method: 'POST',
