@@ -498,6 +498,28 @@
                 return;
             }
             
+            // Фильтруем дубликаты по уникальной комбинации: номер рейса + дата + время отправления
+            const uniqueRaces = [];
+            const seenKeys = new Set();
+            
+            for (const race of races) {
+                const routeNumber = race.route || race.id || '';
+                const departureTime = race.dt_depart || '';
+                
+                // Создаем уникальный ключ
+                const uniqueKey = `${routeNumber}_${departureTime}`;
+                
+                if (!seenKeys.has(uniqueKey)) {
+                    seenKeys.add(uniqueKey);
+                    uniqueRaces.push(race);
+                }
+            }
+            
+            console.log(`Filtered ${races.length} races to ${uniqueRaces.length} unique races`);
+            
+            // Используем отфильтрованный список
+            races = uniqueRaces;
+            
             const html = `
                 <div style="margin-top: 20px;">
                     <div style="background: #e7f5ff; padding: 12px 20px; border-radius: 8px; margin-bottom: 15px;">
