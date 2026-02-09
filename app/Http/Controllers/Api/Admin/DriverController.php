@@ -205,6 +205,14 @@ class DriverController extends Controller
                 $toStation = Station::where('external_id', (string)$validated['to_station_id'])->first();
             }
             
+            // Логируем для отладки
+            Log::info('Assigning race - stations found', [
+                'from_station_id_input' => $validated['from_station_id'],
+                'to_station_id_input' => $validated['to_station_id'],
+                'from_station_found' => $fromStation ? ['id' => $fromStation->id, 'name' => $fromStation->name, 'external_id' => $fromStation->external_id] : null,
+                'to_station_found' => $toStation ? ['id' => $toStation->id, 'name' => $toStation->name, 'external_id' => $toStation->external_id] : null,
+            ]);
+            
             if (!$fromStation) {
                 return response()->json([
                     'success' => false,
@@ -230,15 +238,31 @@ class DriverController extends Controller
             ]);
 
             // Получаем или создаем Trip
-            $trip = Trip::firstOrCreate([
-                'external_id' => $validated['race_id'],
-            ], [
-                'route_id' => $route->id,
-                'trip_number' => $validated['route_number'] ?? $validated['race_id'],
-                'departure_time' => $validated['departure_time'],
-                'arrival_time' => $validated['arrival_time'] ?? \Carbon\Carbon::parse($validated['departure_time'])->addHour(),
-                'status' => 'scheduled',
-            ]);
+            // Ищем существующий Trip по external_id и дате отправления
+            $departureDate = \Carbon\Carbon::parse($validated['departure_time'])->format('Y-m-d');
+            $trip = Trip::where('external_id', $validated['race_id'])
+                ->whereDate('departure_time', $departureDate)
+                ->first();
+            
+            if ($trip) {
+                // Обновляем существующий Trip с правильным маршрутом
+                $trip->update([
+                    'route_id' => $route->id,
+                    'trip_number' => $validated['route_number'] ?? $validated['race_id'],
+                    'departure_time' => $validated['departure_time'],
+                    'arrival_time' => $validated['arrival_time'] ?? \Carbon\Carbon::parse($validated['departure_time'])->addHour(),
+                ]);
+            } else {
+                // Создаем новый Trip
+                $trip = Trip::create([
+                    'external_id' => $validated['race_id'],
+                    'route_id' => $route->id,
+                    'trip_number' => $validated['route_number'] ?? $validated['race_id'],
+                    'departure_time' => $validated['departure_time'],
+                    'arrival_time' => $validated['arrival_time'] ?? \Carbon\Carbon::parse($validated['departure_time'])->addHour(),
+                    'status' => 'scheduled',
+                ]);
+            }
 
             // Проверяем, не назначен ли уже этот рейс
             if ($driver->hasTrip($trip)) {

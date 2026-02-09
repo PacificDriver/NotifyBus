@@ -120,6 +120,19 @@ class TripController extends Controller
                 $finalFromStation = $raceFromStation ?? $fromStation;
                 $finalToStation = $raceToStation ?? $toStation;
 
+                // Логируем для отладки
+                if ($raceFromId || $raceToId) {
+                    Log::debug('Race station mapping', [
+                        'race_id' => $race['id'] ?? $race['route'] ?? 'unknown',
+                        'from_id_api' => $raceFromId,
+                        'to_id_api' => $raceToId,
+                        'from_station_found' => $raceFromStation ? ['id' => $raceFromStation->id, 'name' => $raceFromStation->name, 'external_id' => $raceFromStation->external_id] : null,
+                        'to_station_found' => $raceToStation ? ['id' => $raceToStation->id, 'name' => $raceToStation->name, 'external_id' => $raceToStation->external_id] : null,
+                        'final_from_station' => ['id' => $finalFromStation->id, 'name' => $finalFromStation->name, 'external_id' => $finalFromStation->external_id],
+                        'final_to_station' => ['id' => $finalToStation->id, 'name' => $finalToStation->name, 'external_id' => $finalToStation->external_id],
+                    ]);
+                }
+
                 $enriched = array_merge($race, [
                     'from_station_id' => $finalFromStation->id,
                     'to_station_id' => $finalToStation->id,

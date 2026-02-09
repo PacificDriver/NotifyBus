@@ -24,6 +24,7 @@ Route::middleware(['auth:web'])->group(function () {
     Route::prefix('stations')->group(function () {
         Route::get('/', 'App\Http\Controllers\Api\StationController@index');
         Route::post('/sync', 'App\Http\Controllers\Api\StationController@sync')->middleware('role:admin');
+        Route::post('/clear', 'App\Http\Controllers\Api\StationController@clear')->middleware('role:admin');
     });
 
     // Рейсы
