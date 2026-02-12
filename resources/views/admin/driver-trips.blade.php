@@ -498,18 +498,18 @@
                 return;
             }
             
-            // Фильтруем дубликаты по id_route (уникальный ID рейса из API)
+            // Фильтруем дубликаты: одинаковый id_route + одинаковое время = дубль
             const uniqueRaces = [];
-            const seenIds = new Set();
+            const seenKeys = new Set();
             
             for (const race of races) {
-                const raceId = String(race.id_route);
-                if (seenIds.has(raceId)) continue;
-                seenIds.add(raceId);
+                const key = `${race.id_route}_${race.dt_depart}`;
+                if (seenKeys.has(key)) continue;
+                seenKeys.add(key);
                 uniqueRaces.push(race);
             }
             
-            console.log(`Filtered ${races.length} races to ${uniqueRaces.length} unique races (by id_route)`);
+            console.log(`Filtered ${races.length} races to ${uniqueRaces.length} unique races (by id_route + dt_depart)`);
             
             // Используем отфильтрованный список
             races = uniqueRaces;
