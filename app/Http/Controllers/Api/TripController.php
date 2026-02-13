@@ -26,6 +26,15 @@ class TripController extends Controller
      */
     public function getAll(Request $request): JsonResponse
     {
+        // API перевозчика может отвечать долго при локальной разработке (сеть/латентность)
+        set_time_limit(120);
+
+        Log::info('getAll races: request started', [
+            'from' => $request->input('from'),
+            'to' => $request->input('to'),
+            'date' => $request->input('date'),
+        ]);
+
         $request->validate([
             'from' => 'required|exists:stations,id',
             'to' => 'required|exists:stations,id',
@@ -192,6 +201,9 @@ class TripController extends Controller
      */
     public function getCancelled(Request $request): JsonResponse
     {
+        // API перевозчика может отвечать долго при локальной разработке (сеть/латентность)
+        set_time_limit(120);
+
         $request->validate([
             'from' => 'required|exists:stations,id', // ID станции в локальной БД
             'to' => 'required|exists:stations,id',   // ID станции в локальной БД

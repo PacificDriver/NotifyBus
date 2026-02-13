@@ -460,10 +460,11 @@
             document.getElementById('racesResults').innerHTML = 
                 '<p class="loading">⏳ Загрузка рейсов от провайдера...</p>';
             
+            let response;
             try {
                 const url = `/api/races/all?from=${from}&to=${to}&date=${date}`;
                 
-                const response = await fetch(url, {
+                response = await fetch(url, {
                     headers: {
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
@@ -471,7 +472,19 @@
                     credentials: 'include',
                 });
                 
-                const result = await response.json();
+                const text = await response.text();
+                let result;
+                try {
+                    result = text ? JSON.parse(text) : {};
+                } catch (e) {
+                    const detail = response.status === 500 && text.length < 300
+                        ? ': ' + escapeHtml(text.replace(/\s+/g, ' ').substring(0, 200))
+                        : ' (HTTP ' + response.status + ')';
+                    document.getElementById('racesResults').innerHTML = 
+                        '<p style="text-align: center; color: #fa5252; padding: 40px;">Ошибка загрузки рейсов' + detail + '</p>';
+                    console.error('API returned non-JSON:', { status: response.status, body: text.substring(0, 500) });
+                    return;
+                }
                 
                 if (result.success && result.data) {
                     displayRaces(result.data, result.from_station, result.to_station);
@@ -481,40 +494,50 @@
                 }
             } catch (error) {
                 console.error('Error searching races:', error);
+                const detail = response ? ' (HTTP ' + response.status + ')' : ': ' + (error.message || error);
                 document.getElementById('racesResults').innerHTML = 
-                    '<p style="text-align: center; color: #fa5252; padding: 40px;">Ошибка загрузки рейсов</p>';
+                    '<p style="text-align: center; color: #fa5252; padding: 40px;">Ошибка загрузки рейсов' + escapeHtml(detail) + '</p>';
             }
         }
 
         function displayRaces(races, fromStation, toStation) {
-            if (!races || races.length === 0) {
-                document.getElementById('racesResults').innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">🔍</div>
-                        <h3 style="color: #495057; margin-bottom: 10px;">Рейсы не найдены</h3>
-                        <p>Попробуйте изменить параметры поиска</p>
-                    </div>
-                `;
-                return;
-            }
-            
-            // Фильтруем дубликаты: одинаковый id_route + одинаковое время = дубль
-            const uniqueRaces = [];
-            const seenKeys = new Set();
-            
-            for (const race of races) {
-                const key = `${race.id_route}_${race.dt_depart}`;
-                if (seenKeys.has(key)) continue;
-                seenKeys.add(key);
-                uniqueRaces.push(race);
-            }
-            
-            console.log(`Filtered ${races.length} races to ${uniqueRaces.length} unique races (by id_route + dt_depart)`);
-            
-            // Используем отфильтрованный список
-            races = uniqueRaces;
-            
-            const html = `
+            try {
+                if (!races || !Array.isArray(races) || races.length === 0) {
+                    document.getElementById('racesResults').innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🔍</div>
+                            <h3 style="color: #495057; margin-bottom: 10px;">Рейсы не найдены</h3>
+                            <p>Попробуйте изменить параметры поиска</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                fromStation = fromStation || {};
+                toStation = toStation || {};
+                
+                // Уникальный рейс = id_route + route_start + route_end + dt_race_start (один автобус)
+                // route_start/route_end — начало и конец всего маршрута
+                const groups = new Map();
+                const fromExternalId = String(fromStation?.external_id ?? '');
+                const toExternalId = String(toStation?.external_id ?? '');
+                
+                for (const race of races) {
+                    const dtStart = race.dt_race_start || race.dt_depart;
+                    const key = `${race.id_route}_${race.route_start}_${race.route_end}_${dtStart}`;
+                    const fromMatch = race.from_id == fromExternalId || race.from_station_id == fromStation?.id;
+                    const toMatch = race.to_id == toExternalId || race.to_station_id == toStation?.id;
+                    const matchesSearch = fromMatch && toMatch;
+                    
+                    if (!groups.has(key) || matchesSearch) {
+                        groups.set(key, race);
+                    }
+                }
+                
+                races = Array.from(groups.values());
+                console.log(`Filtered to ${races.length} unique races (by id_route + route_start + route_end + dt_race_start)`);
+                
+                const html = `
                 <div style="margin-top: 20px;">
                     <div style="background: #e7f5ff; padding: 12px 20px; border-radius: 8px; margin-bottom: 15px;">
                         <strong style="color: #1c7ed6;">✓ Найдено рейсов: ${races.length}</strong>
@@ -541,14 +564,17 @@
                                     const departureDate = race.dt_depart ? new Date(race.dt_depart).toLocaleDateString('ru-RU') : '—';
                                     const departureTime = race.dt_depart ? new Date(race.dt_depart).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'}) : '—';
                                     const arrivalTime = race.dt_arrive ? new Date(race.dt_arrive).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'}) : '—';
+                                    const fromName = race.from_name || race.route_start || fromStation.name || '—';
+                                    const toName = race.to_name || race.route_end || toStation.name || '—';
+                                    const raceId = String(race.id ?? race.id_route ?? '');
                                     
                                     return `
                                         <tr>
                                             <td>${departureDate}</td>
                                             <td style="font-size: 0.9rem;">
-                                                <div style="font-weight: 600;">${escapeHtml(race.from_name || race.route_start || fromStation.name)}${race.from_id ? ` (${race.from_id})` : ''}</div>
+                                                <div style="font-weight: 600;">${escapeHtml(fromName)}${race.from_id ? ` (${race.from_id})` : ''}</div>
                                                 <div style="color: #667eea; margin: 4px 0;">↓</div>
-                                                <div style="font-weight: 600;">${escapeHtml(race.to_name || race.route_end || toStation.name)}${race.to_id ? ` (${race.to_id})` : ''}</div>
+                                                <div style="font-weight: 600;">${escapeHtml(toName)}${race.to_id ? ` (${race.to_id})` : ''}</div>
                                             </td>
                                             <td style="font-weight: 700; color: #667eea; font-size: 1.1rem;">${escapeHtml(race.route || race.id || '—')}</td>
                                             <td style="font-weight: 600;">${departureTime}</td>
@@ -558,7 +584,7 @@
                                             <td>
                                                 <button 
                                                     class="btn btn-primary btn-small" 
-                                                    onclick="assignRace('${escapeHtml(race.id)}', '${escapeHtml(race.route || race.id)}', '${race.from_station_id || race.from_id || ''}', '${race.to_station_id || race.to_id || ''}', '${race.dt_depart}', '${race.dt_arrive || ''}', '${escapeHtml(race.from_name || race.route_start || '')}', '${escapeHtml(race.to_name || race.route_end || '')}')"
+                                                    onclick="assignRace('${escapeHtml(raceId)}', '${escapeHtml(race.route || race.id || '')}', '${race.from_station_id || race.from_id || ''}', '${race.to_station_id || race.to_id || ''}', '${race.dt_depart}', '${race.dt_arrive || ''}', '${escapeHtml(fromName)}', '${escapeHtml(toName)}')"
                                                     ${!isActive ? 'disabled' : ''}
                                                 >
                                                     ${isActive ? '✓ Назначить' : 'Отменен'}
@@ -574,6 +600,11 @@
             `;
             
             document.getElementById('racesResults').innerHTML = html;
+            } catch (err) {
+                console.error('displayRaces error:', err);
+                document.getElementById('racesResults').innerHTML = 
+                    '<p style="text-align: center; color: #fa5252; padding: 40px;">Ошибка отображения: ' + escapeHtml(err.message || String(err)) + '</p>';
+            }
         }
 
         // Назначить рейс
