@@ -45,10 +45,10 @@ class Trip extends Model
                 }
                 // Если значение уже Carbon объект
                 if ($value instanceof \Carbon\Carbon) {
-                    return $value->setTimezone('Asia/Sakhalin')->subHours(3);
+                    return $value->copy()->setTimezone('Asia/Sakhalin');
                 }
-                // Если строка, парсим как UTC и конвертируем в Asia/Sakhalin, вычитаем 3 часа
-                return \Carbon\Carbon::parse($value, 'UTC')->setTimezone('Asia/Sakhalin')->subHours(3);
+                // Если строка, парсим как UTC и конвертируем в Asia/Sakhalin
+                return \Carbon\Carbon::parse($value, 'UTC')->setTimezone('Asia/Sakhalin');
             },
             set: function ($value) {
                 if (!$value) {
@@ -68,9 +68,9 @@ class Trip extends Model
                     return null;
                 }
                 if ($value instanceof \Carbon\Carbon) {
-                    return $value->setTimezone('Asia/Sakhalin')->subHours(3);
+                    return $value->copy()->setTimezone('Asia/Sakhalin');
                 }
-                return \Carbon\Carbon::parse($value, 'UTC')->setTimezone('Asia/Sakhalin')->subHours(3);
+                return \Carbon\Carbon::parse($value, 'UTC')->setTimezone('Asia/Sakhalin');
             },
             set: function ($value) {
                 if (!$value) {
