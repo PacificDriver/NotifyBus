@@ -516,15 +516,14 @@
                 fromStation = fromStation || {};
                 toStation = toStation || {};
                 
-                // Уникальный рейс = id_route + route_start + route_end + dt_race_start (один автобус)
-                // route_start/route_end — начало и конец всего маршрута
+                // Уникальный рейс = id_route + dt_depart (один автобус)
+                // API возвращает дубли для каждой пары остановок (from→to) по маршруту
                 const groups = new Map();
                 const fromExternalId = String(fromStation?.external_id ?? '');
                 const toExternalId = String(toStation?.external_id ?? '');
                 
                 for (const race of races) {
-                    const dtStart = race.dt_race_start || race.dt_depart;
-                    const key = `${race.id_route}_${race.route_start}_${race.route_end}_${dtStart}`;
+                    const key = `${race.id_route}_${race.dt_depart}`;
                     const fromMatch = race.from_id == fromExternalId || race.from_station_id == fromStation?.id;
                     const toMatch = race.to_id == toExternalId || race.to_station_id == toStation?.id;
                     const matchesSearch = fromMatch && toMatch;
@@ -535,7 +534,7 @@
                 }
                 
                 races = Array.from(groups.values());
-                console.log(`Filtered to ${races.length} unique races (by id_route + route_start + route_end + dt_race_start)`);
+                console.log(`Filtered to ${races.length} unique races (by id_route + dt_depart)`);
                 
                 const html = `
                 <div style="margin-top: 20px;">
