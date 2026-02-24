@@ -32,8 +32,8 @@ class DriverTripController extends Controller
             return [
                 'id' => $trip->id,
                 'race_id' => $trip->external_id,
-                'from_station_id' => $trip->route->departure_station_id,
-                'to_station_id' => $trip->route->arrival_station_id,
+                'from_id' => $trip->route->departureStation?->external_id,
+                'to_id' => $trip->route->arrivalStation?->external_id,
                 'date' => $trip->departure_time?->format('Y-m-d'),
             ];
         });
