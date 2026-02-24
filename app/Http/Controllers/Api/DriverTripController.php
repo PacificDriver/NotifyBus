@@ -31,6 +31,7 @@ class DriverTripController extends Controller
         $formattedTrips = $trips->map(function ($trip) {
             return [
                 'id' => $trip->id,
+                'race_id' => $trip->external_id,
                 'from_station_id' => $trip->route->departure_station_id,
                 'to_station_id' => $trip->route->arrival_station_id,
                 'date' => $trip->departure_time?->format('Y-m-d'),
